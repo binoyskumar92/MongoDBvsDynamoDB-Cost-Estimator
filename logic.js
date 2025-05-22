@@ -81,6 +81,7 @@ const AWS_BUSINESS_SUPPORT_TIERS = [
 
 // DOM elements - will be initialized when DOM loads
 let readRatioSlider, itemSizeSlider, dataUsageSlider, utilizationSlider;
+let crossRegionSlider, transactionSlider, crossRegionValue, transactionValue;
 let readRatioValue, writeRatioValue, itemSizeValue, dataUsageValue, utilizationValue;
 let tableBody, m30Details;
 let atlasSupportToggle, atlasDiscountToggle, atlasContinuousBackupToggle, atlasSnapshotBackupToggle;
@@ -109,7 +110,7 @@ function calculateDynamoBackupCosts(actualDataSize) {
         // This accounts for: daily (30 days) + weekly (12 weeks) + monthly (12 months) + yearly (7 years)
         const backupStorageMultiplier = 18; // Conservative enterprise estimate
         const totalBackupStorage = actualDataSize * backupStorageMultiplier;
-        
+
         costs.onDemandBackupCost = totalBackupStorage * DYNAMO_ONDEMAND_BACKUP_PRICE;
         costs.totalBackupStorage = Math.round(totalBackupStorage * 10) / 10; // Round for display
     }
@@ -143,7 +144,7 @@ function calculateAtlasSnapshotBackupCost(actualDataSize) {
 
     for (const period in ATLAS_SNAPSHOT_RETENTION) {
         const { retention_days, frequency_per_month } = ATLAS_SNAPSHOT_RETENTION[period];
-        
+
         // For each snapshot type, calculate GB-days per month
         // Each snapshot of actualDataSize is retained for retention_days
         // And we take frequency_per_month snapshots per month
@@ -240,6 +241,8 @@ function calculateActualDataSize(includedStorageGB, usagePercentage) {
 
 // Calculate DynamoDB costs for each Atlas tier
 function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utilizationPercentage) {
+    const crossRegionReplicas = parseInt(crossRegionSlider.value);
+    const transactionPercentage = parseInt(transactionSlider.value);
     return atlasTiers.map(tier => {
         const actualDataSize = calculateActualDataSize(tier.storage, dataUsagePercentage);
         const effectiveOps = tier.ops * (utilizationPercentage / 100);
@@ -253,8 +256,17 @@ function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utiliz
         const rrusPerSec = readsPerSec * rruPerRead;
         const wrusPerSec = writesPerSec * wruPerWrite;
 
-        const totalRrus = rrusPerSec * SECONDS_PER_MONTH / 1000000;
-        const totalWrus = wrusPerSec * SECONDS_PER_MONTH / 1000000;
+        const transactionMultiplier = 1 + (transactionPercentage / 100);
+        const adjustedRRUs = rrusPerSec * transactionMultiplier;
+        const adjustedWRUs = wrusPerSec * transactionMultiplier;
+
+        // Apply cross-region write amplification
+        const crossRegionWriteMultiplier = 1 + crossRegionReplicas;
+        const finalRRUs = adjustedRRUs;  // Reads don't amplify
+        const finalWRUs = adjustedWRUs * crossRegionWriteMultiplier;
+
+        const totalRrus = finalRRUs * SECONDS_PER_MONTH / 1000000;
+        const totalWrus = finalWRUs * SECONDS_PER_MONTH / 1000000;
 
         const readCost = totalRrus * DYNAMO_RRU_PRICE;
         const writeCost = totalWrus * DYNAMO_WRU_PRICE;
@@ -291,7 +303,7 @@ function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utiliz
                 storageCost: Math.round(storageCost),
                 dynamoSupportCost: Math.round(supportCost),
                 ...Object.fromEntries(
-                    Object.entries(backupCosts).map(([key, value]) => 
+                    Object.entries(backupCosts).map(([key, value]) =>
                         [key, typeof value === 'number' ? Math.round(value) : value]
                     )
                 ),
@@ -395,7 +407,7 @@ function updateTable(comparisonData) {
     // Update M30 details
     const m30 = comparisonData[2];
     const backupDetails = m30.details;
-    
+
     m30Details.innerHTML = `
 <h3>Detailed Cost Breakdown for M30 Tier (${m30.actualDataSize}GB actual data, ${utilizationSlider.value}% utilization)</h3>
 
@@ -434,12 +446,16 @@ function updateUI() {
     const itemSize = parseInt(itemSizeSlider.value);
     const dataUsage = parseInt(dataUsageSlider.value);
     const utilization = parseInt(utilizationSlider.value);
+    const crossRegion = parseInt(crossRegionSlider.value);
+    const transaction = parseInt(transactionSlider.value);
 
     readRatioValue.textContent = readRatio;
     writeRatioValue.textContent = 100 - readRatio;
     itemSizeValue.textContent = itemSize;
     dataUsageValue.textContent = dataUsage;
     utilizationValue.textContent = utilization;
+    crossRegionValue.textContent = crossRegion;
+    transactionValue.textContent = transaction;
 
     const comparisonData = calculateDynamoCosts(readRatio, itemSize, dataUsage, utilization);
     updateChart(comparisonData);
@@ -469,6 +485,10 @@ function initializeApp() {
     dynamoBackupToggle = document.getElementById('dynamoBackupToggle');
     dynamoSnapshotBackupToggle = document.getElementById('dynamoSnapshotBackupToggle');
     dynamoCrossRegionToggle = document.getElementById('dynamoCrossRegionToggle');
+    crossRegionSlider = document.getElementById('crossRegionSlider');
+    transactionSlider = document.getElementById('transactionSlider');
+    crossRegionValue = document.getElementById('crossRegionValue');
+    transactionValue = document.getElementById('transactionValue');
 
     // Event listeners
     readRatioSlider.addEventListener('input', updateUI);
@@ -482,7 +502,9 @@ function initializeApp() {
     dynamoSupportToggle.addEventListener('change', updateUI);
     dynamoBackupToggle.addEventListener('change', updateUI);
     dynamoSnapshotBackupToggle.addEventListener('change', updateUI);
-    
+    crossRegionSlider.addEventListener('input', updateUI);
+    transactionSlider.addEventListener('input', updateUI);
+
     if (dynamoCrossRegionToggle) {
         dynamoCrossRegionToggle.addEventListener('change', updateUI);
     }
