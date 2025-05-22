@@ -95,6 +95,60 @@
                         </label>
                         <span>Include On-Demand Backup</span>
                     </div>
+                    <div class="switch-container">
+                        <label class="switch">
+                            <input type="checkbox" id="dynamoCrossRegionToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Include Cross-Region Replication</span>
+                    </div>
+                </div>
+
+                <!-- Updated Key Insights section with more comprehensive comparison -->
+                <div class="card">
+                    <h2>Key Insights</h2>
+                    <ul>
+                        <li>MongoDB Atlas has a fixed monthly cost regardless of actual utilization.</li>
+                        <li>DynamoDB costs scale linearly with operation volume and actual utilization.</li>
+                        <li>Most real-world workloads run at 30-70% average utilization of their peak capacity.</li>
+                        <li>Write operations account for most of DynamoDB costs (~75-80%) because they are 5x more
+                            expensive than reads.</li>
+                        <li>AWS Business Support adds a tiered percentage cost based on your monthly AWS bill (10% for
+                            first $10K, 7% for $10K-$80K, etc.) with a $100 minimum.</li>
+                        <li>Atlas Support adds a percentage premium to the base cluster and backup costs (70% standard,
+                            37% with discount).</li>
+                        <li>Enterprise discounts of 17% can significantly reduce Atlas costs for large deployments.</li>
+                        <li>Cross-region replication for DynamoDB includes additional storage costs and data transfer
+                            charges ($0.09/GB).</li>
+                        <li>Both services use similar backup retention policies (weekly/monthly/yearly) for fair
+                            comparison.</li>
+                        <li>DynamoDB becomes cost-effective at lower utilization levels (around 10-15% of equivalent
+                            Atlas tier capacity).</li>
+                    </ul>
+
+                    <div class="flex-grid">
+                        <div class="flex-grid-item atlas-box">
+                            <h3>Choose MongoDB Atlas when:</h3>
+                            <ul>
+                                <li>Your workload is consistent and predictable</li>
+                                <li>You have high utilization (>30% of tier capacity)</li>
+                                <li>You need complex query capabilities</li>
+                                <li>Your document size varies significantly</li>
+                                <li>You prefer predictable monthly costs</li>
+                            </ul>
+                        </div>
+
+                        <div class="flex-grid-item dynamo-box">
+                            <h3>Choose DynamoDB when:</h3>
+                            <ul>
+                                <li>Your workload is highly variable or unpredictable</li>
+                                <li>You have low utilization (<15% of equivalent Atlas tier)</li>
+                                <li>Your access patterns are simple (key-value lookups)</li>
+                                <li>You need serverless, automatic scaling</li>
+                                <li>You prefer pay-per-use pricing</li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -135,56 +189,9 @@
         </div>
 
         <div class="card">
-            <h2>Key Insights</h2>
-            <ul>
-                <li>MongoDB Atlas has a fixed monthly cost regardless of actual utilization.</li>
-                <li>DynamoDB costs scale linearly with operation volume and actual utilization.</li>
-                <li>The utilization factor is critical when comparing fixed-price vs. usage-based services.</li>
-                <li>Most real-world workloads run at 30-70% average utilization of their peak capacity.</li>
-                <li>Write operations account for most of DynamoDB costs (~75-80%) because they are 5x more expensive
-                    than reads.</li>
-                <li>AWS Business Support adds a tiered percentage cost based on your monthly AWS bill (10% for first
-                    $10K, 7% for $10K-$80K, etc.).</li>
-                <li>Atlas Support adds a percentage premium to the base cluster and backup costs (70% standard, 37% with
-                    discount).</li>
-                <li>Enterprise discounts of 17% can significantly reduce Atlas costs for large deployments.</li>
-                <li><strong>Backup costs use different models:</strong> Atlas uses GB-days pricing with comprehensive retention, DynamoDB uses total backup storage size (AWS official 2.2x multiplier).</li>
-                <li>Atlas includes more frequent backups (hourly) while DynamoDB uses a simpler total storage approach.</li>
-                <li>DynamoDB becomes cost-effective at lower utilization levels (around 10-15% of equivalent Atlas tier
-                    capacity).</li>
-            </ul>
-
-            <div class="flex-grid">
-                <div class="flex-grid-item atlas-box">
-                    <h3>Choose MongoDB Atlas when:</h3>
-                    <ul>
-                        <li>Your workload is consistent and predictable</li>
-                        <li>You have high utilization (>30% of tier capacity)</li>
-                        <li>You need complex query capabilities</li>
-                        <li>Your document size varies significantly</li>
-                        <li>You need more frequent backup snapshots (hourly)</li>
-                        <li>You prefer GB-days pricing model for fine-grained backup control</li>
-                    </ul>
-                </div>
-
-                <div class="flex-grid-item dynamo-box">
-                    <h3>Choose DynamoDB when:</h3>
-                    <ul>
-                        <li>Your workload is highly variable or unpredictable</li>
-                        <li>You have low utilization (<15% of equivalent Atlas tier)</li>
-                        <li>Your access patterns are simple (key-value lookups)</li>
-                        <li>You need serverless, automatic scaling</li>
-                        <li>Daily backup snapshots are sufficient for your needs</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
             <h2>Understanding the Cost Calculation: Detailed Example</h2>
 
-            <p>Let's break down exactly how the cost calculation works using the M30 tier as an example, including
-                support and all backup costs:</p>
+            <p>Let's break down exactly how the cost calculation works using the M30 tier as an example:</p>
 
             <div class="math-example">
                 <h3>Example: M30 Tier with 70% Reads / 30% Writes, 2KB Item Size, 70% Data Usage, and 50% Utilization
@@ -213,9 +220,13 @@
                     &nbsp;&nbsp;- Total continuous backup cost: $28.60/month ($343.20/year)<br>
                     <u>Snapshot backup cost using GB-days pricing:</u><br>
                     &nbsp;&nbsp;- GB-day rate: ($0.14 × 12)/365 = $0.004602 per GB-day<br>
-                    &nbsp;&nbsp;- Includes hourly (2 days), daily (7 days), weekly (28 days), monthly (365 days), yearly (365 days)<br>
-                    &nbsp;&nbsp;- Total GB-days per month: ~27,043 GB-days for 28GB data<br>
-                    &nbsp;&nbsp;- Monthly snapshot cost: 27,043 × $0.004602 = $124.45/month ($1,493.40/year)<br>
+                    &nbsp;&nbsp;- Hourly (2 days retention): 28GB × 2 days × 120 snapshots/month = 6,720 GB-days<br>
+                    &nbsp;&nbsp;- Daily (7 days retention): 28GB × 7 days × 30 snapshots/month = 5,880 GB-days<br>
+                    &nbsp;&nbsp;- Weekly (28 days retention): 28GB × 28 days × 4.3 snapshots/month = 3,370 GB-days<br>
+                    &nbsp;&nbsp;- Monthly (365 days retention): 28GB × 365 days × 1 snapshot/month = 10,220 GB-days<br>
+                    &nbsp;&nbsp;- Yearly (365 days retention): 28GB × 365 days × 0.083 snapshots/month = 851 GB-days<br>
+                    &nbsp;&nbsp;- Total GB-days per month: 27,041 GB-days<br>
+                    &nbsp;&nbsp;- Monthly snapshot cost: 27,041 × $0.004602 = $124.45/month ($1,493.40/year)<br>
                     Base + Backup subtotal: $394 + $28.60 + $124.45 = <strong>$547.05/month ($6,564.60/year)</strong>
                 </div>
 
@@ -235,50 +246,62 @@
                 </div>
 
                 <div class="math-step">
-                    <strong>Step 6: Calculate DynamoDB Snapshot Backup Cost (New Method)</strong><br>
-                    <u>DynamoDB snapshot backup using GB-days pricing:</u><br>
-                    &nbsp;&nbsp;- GB-day rate: ($0.10 × 12)/365 = $0.003288 per GB-day<br>
-                    &nbsp;&nbsp;- Includes daily (7 days), weekly (28 days), monthly (365 days), yearly (365 days)<br>
-                    &nbsp;&nbsp;- Total GB-days per month: ~20,323 GB-days for 28GB data<br>
-                    &nbsp;&nbsp;- Monthly snapshot cost: 20,323 × $0.003288 = $66.82/month ($801.84/year)<br>
-                    &nbsp;&nbsp;- PITR cost: 28GB × $0.20 = $5.60/month ($67.20/year)<br>
-                    &nbsp;&nbsp;- Total DynamoDB backup cost: $66.82 + $5.60 = $72.42/month ($869.04/year)
+                    <strong>Step 6: Calculate DynamoDB Operations at 50% Utilization</strong><br>
+                    M30 equivalent operations: 2,800 ops/sec<br>
+                    Effective operations: 2,800 × 50% = 1,400 ops/sec<br>
+                    Reads per second: 1,400 × 70% = 980 reads/sec<br>
+                    Writes per second: 1,400 × 30% = 420 writes/sec<br>
+                    <br>
+                    <u>Capacity units needed (2KB items):</u><br>
+                    &nbsp;&nbsp;- RRUs per read: ceil(2KB / 4KB) = 1 RRU<br>
+                    &nbsp;&nbsp;- WRUs per write: ceil(2KB / 1KB) = 2 WRUs<br>
+                    &nbsp;&nbsp;- Total RRUs/sec: 980 × 1 = 980 RRUs/sec<br>
+                    &nbsp;&nbsp;- Total WRUs/sec: 420 × 2 = 840 WRUs/sec<br>
+                    <br>
+                    <u>Monthly costs:</u><br>
+                    &nbsp;&nbsp;- Monthly RRUs: 980 × 2,592,000 sec ÷ 1,000,000 = 2,540 million RRUs<br>
+                    &nbsp;&nbsp;- Monthly WRUs: 840 × 2,592,000 sec ÷ 1,000,000 = 2,177 million WRUs<br>
+                    &nbsp;&nbsp;- Read cost: 2,540 × $0.125 = $317.50/month<br>
+                    &nbsp;&nbsp;- Write cost: 2,177 × $0.625 = $1,360.63/month<br>
+                    &nbsp;&nbsp;- Storage cost: max(0, 28GB - 25GB) × $0.25 = $0.75/month<br>
+                    &nbsp;&nbsp;- Base operations cost: <strong>$1,678.88/month</strong>
                 </div>
 
                 <div class="math-step">
-                    <strong>Step 7: Updated DynamoDB Total Cost</strong><br>
-                    Base operations + storage: $1,679.07/month<br>
-                    Support cost: $167.91/month<br>
-                    Backup costs: $72.42/month<br>
-                    <strong>Total DynamoDB cost: $1,919.40/month ($23,032.80/year)</strong>
+                    <strong>Step 7: Calculate DynamoDB Backup Costs</strong><br>
+                    <u>DynamoDB snapshot backup using enterprise storage multiplier:</u><br>
+                    &nbsp;&nbsp;- Table size: 28GB<br>
+                    &nbsp;&nbsp;- Enterprise backup multiplier: 18x (accounts for daily/weekly/monthly/yearly
+                    retention)<br>
+                    &nbsp;&nbsp;- Total backup storage: 28GB × 18 = 504GB<br>
+                    &nbsp;&nbsp;- Monthly snapshot cost: 504GB × $0.10 = $50.40/month ($604.80/year)<br>
+                    &nbsp;&nbsp;- PITR cost: 28GB × $0.20 = $5.60/month ($67.20/year)<br>
+                    &nbsp;&nbsp;- Cross-region replication: 28GB × $0.25 + 28GB × $0.09 + 2.8GB × $0.09 =
+                    $9.75/month<br>
+                    &nbsp;&nbsp;- Total DynamoDB backup cost: $50.40 + $5.60 + $9.75 = $65.75/month ($789.00/year)
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 8: Calculate DynamoDB Support Cost</strong><br>
+                    Base + backup cost: $1,678.88 + $65.75 = $1,744.63/month<br>
+                    AWS Business Support (10% on first $10K): $174.46/month ($2,093.52/year)<br>
+                    <strong>Total DynamoDB cost: $1,744.63 + $174.46 = $1,919.09/month ($23,028.08/year)</strong>
                 </div>
 
                 <div class="math-result">
-                    <strong>Final Comparison with Improved Backup Calculations:</strong><br>
+                    <strong>Final Comparison:</strong><br>
                     MongoDB Atlas total: $622.05/month ($7,464.60/year) (with discount)<br>
-                    DynamoDB total: $1,919.40/month ($23,032.80/year)<br>
-                    <strong>Cost ratio:</strong> $1,919.40 ÷ $622.05 = 3.1x more expensive than Atlas
+                    DynamoDB total: $1,919.09/month ($23,028.08/year)<br>
+                    <strong>Cost ratio:</strong> $1,919.09 ÷ $622.05 = 3.1x more expensive than Atlas
                 </div>
 
                 <div class="math-step" style="margin-top: 20px;">
-                    <strong>Key Improvements in Backup Calculation:</strong><br>
-                    - Both services now use comparable GB-days retention models<br>
-                    - DynamoDB backup costs increased from ~$8.40 to $72.42/month (more realistic)<br>
-                    - Atlas includes hourly snapshots; DynamoDB starts with daily for cost efficiency<br>
-                    - Calculations now reflect actual enterprise backup policies and retention requirements
+                    <strong>Key Insights:</strong><br>
+                    - DynamoDB's pay-per-use model becomes expensive at moderate utilization levels<br>
+                    - Write-heavy workloads significantly increase DynamoDB costs (5x more expensive than reads)<br>
+                    - Enterprise backup retention typically results in 15-20x table size in total backup storage<br>
+                    - Support costs have different models: percentage-based (Atlas) vs tiered usage-based (AWS)
                 </div>
-            </div>
-
-            <div class="info-box" style="margin-top: 20px;">
-                <h3>Understanding the Updated Backup Cost Model</h3>
-                <p>Both MongoDB Atlas and DynamoDB now use similar GB-days pricing models that better reflect real-world backup costs:</p>
-                <ul>
-                    <li><strong>MongoDB Atlas Snapshots:</strong> Include hourly (2 days), daily (7 days), weekly (28 days), monthly (365 days), and yearly (365 days) retention</li>
-                    <li><strong>DynamoDB Snapshots:</strong> Include daily (7 days), weekly (28 days), monthly (365 days), and yearly (365 days) retention (no hourly for cost efficiency)</li>
-                    <li><strong>GB-days calculation:</strong> Each snapshot size × retention days × frequency per month = total GB-days</li>
-                    <li><strong>Realistic costs:</strong> The new model shows backup costs can be significant (10-20% of total cost) and should be factored into decision-making</li>
-                </ul>
-                <p>This updated model provides a more accurate comparison between the two services' backup strategies and associated costs.</p>
             </div>
         </div>
     </div>
