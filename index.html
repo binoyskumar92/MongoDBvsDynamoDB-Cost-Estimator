@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MongoDB Atlas vs DynamoDB Cost Comparison</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="logic.js"></script>
+    <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+    <div class="container">
+        <h1>MongoDB Atlas vs DynamoDB Cost Comparison</h1>
+
+        <div class="card">
+            <h2>Configure Workload</h2>
+            <div class="controls">
+                <div class="control-group">
+                    <label class="control-label">Read/Write Ratio: <span id="readRatioValue">70</span>% reads, <span
+                            id="writeRatioValue">30</span>% writes</label>
+                    <input type="range" id="readRatio" min="0" max="100" value="70" style="width: 100%;">
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Item Size: <span id="itemSizeValue">2</span>KB</label>
+                    <input type="range" id="itemSize" min="1" max="10" value="2" style="width: 100%;">
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Data Usage: <span id="dataUsageValue">70</span>% of included
+                        storage</label>
+                    <input type="range" id="dataUsage" min="10" max="100" value="70" style="width: 100%;">
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Cluster Utilization: <span id="utilizationValue">50</span>% of peak
+                        capacity</label>
+                    <input type="range" id="utilization" min="10" max="100" value="50" style="width: 100%;">
+                </div>
+            </div>
+
+            <div class="flex-grid">
+                <div class="flex-grid-item">
+                    <h3>MongoDB Atlas Options</h3>
+                    <div class="switch-container">
+                        <label class="switch">
+                            <input type="checkbox" id="atlasSupportToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Include Support (70% premium, reduced to 37% with discount)</span>
+                    </div>
+                    <div class="switch-container">
+                        <label class="switch">
+                            <input type="checkbox" id="atlasDiscountToggle">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Apply 17% Enterprise Discount(Infra + 37% Support)</span>
+                    </div>
+                    <div class="switch-container">
+                        <label class="switch">
+                            <input type="checkbox" id="atlasContinuousBackupToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Include Continuous Backup (tiered: $0-1.00/GB/month)</span>
+                    </div>
+                    <div class="switch-container">
+                        <label class="switch">
+                            <input type="checkbox" id="atlasSnapshotBackupToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Include Snapshot Backup ($0.10/GB via GB-days pricing)</span>
+                    </div>
+                </div>
+
+                <div class="flex-grid-item">
+                    <h3>DynamoDB Options</h3>
+                    <div class="switch-container">
+                        <label class="switch">
+                            <input type="checkbox" id="dynamoSupportToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Include AWS Business Support (tiered pricing)</span>
+                    </div>
+                    <div class="switch-container">
+                        <label class="switch">
+                            <input type="checkbox" id="dynamoBackupToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Include Point-in-Time Recovery (PITR) ($0.20/GB/month)</span>
+                    </div>
+                    <div class="switch-container">
+                        <label class="switch">
+                            <input type="checkbox" id="dynamoSnapshotBackupToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Include On-Demand Backups ($0.10/GB/month warm storage)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Cost Comparison Chart</h2>
+            <div class="chart-container">
+                <canvas id="costChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Detailed Cost Comparison</h2>
+            <div style="overflow-x: auto;">
+                <table id="costTable">
+                    <thead>
+                        <tr>
+                            <th>Tier</th>
+                            <th class="text-right">Operations/sec<br><small>(Peak / Effective)</small></th>
+                            <th class="text-right">Included Storage</th>
+                            <th class="text-right">Actual Data</th>
+                            <th class="text-right">Atlas Total<br>(Monthly)</th>
+                            <th class="text-right">DynamoDB Total<br>(Monthly)</th>
+                            <th class="text-right">Atlas Total<br>(Yearly)</th>
+                            <th class="text-right">DynamoDB Total<br>(Yearly)</th>
+                            <th class="text-right">Cost Ratio</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- Table rows will be generated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="m30Details" class="info-box">
+                <!-- M30 details will be inserted here -->
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Key Insights</h2>
+            <ul>
+                <li>MongoDB Atlas has a fixed monthly cost regardless of actual utilization.</li>
+                <li>DynamoDB costs scale linearly with operation volume and actual utilization.</li>
+                <li>The utilization factor is critical when comparing fixed-price vs. usage-based services.</li>
+                <li>Most real-world workloads run at 30-70% average utilization of their peak capacity.</li>
+                <li>Write operations account for most of DynamoDB costs (~75-80%) because they are 5x more expensive
+                    than reads.</li>
+                <li>AWS Business Support adds a tiered percentage cost based on your monthly AWS bill (10% for first
+                    $10K, 7% for $10K-$80K, etc.).</li>
+                <li>Atlas Support adds a percentage premium to the base cluster and backup costs (70% standard, 37% with
+                    discount).</li>
+                <li>Enterprise discounts of 17% can significantly reduce Atlas costs for large deployments.</li>
+                <li>Backup costs are directly proportional to the actual data size stored, not just the included storage
+                    capacity.</li>
+                <li>DynamoDB becomes cost-effective at lower utilization levels (around 10-15% of equivalent Atlas tier
+                    capacity).</li>
+            </ul>
+
+            <div class="flex-grid">
+                <div class="flex-grid-item atlas-box">
+                    <h3>Choose MongoDB Atlas when:</h3>
+                    <ul>
+                        <li>Your workload is consistent and predictable</li>
+                        <li>You have high utilization (>30% of tier capacity)</li>
+                        <li>You need complex query capabilities</li>
+                        <li>Your document size varies significantly</li>
+                    </ul>
+                </div>
+
+                <div class="flex-grid-item dynamo-box">
+                    <h3>Choose DynamoDB when:</h3>
+                    <ul>
+                        <li>Your workload is highly variable or unpredictable</li>
+                        <li>You have low utilization (<15% of equivalent Atlas tier)</li>
+                        <li>Your access patterns are simple (key-value lookups)</li>
+                        <li>You need serverless, automatic scaling</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Understanding the Cost Calculation: Detailed Example</h2>
+
+            <p>Let's break down exactly how the cost calculation works using the M30 tier as an example, including
+                support and all backup costs:</p>
+
+            <div class="math-example">
+                <h3>Example: M30 Tier with 70% Reads / 30% Writes, 2KB Item Size, 70% Data Usage, and 50% Utilization
+                </h3>
+
+                <div class="math-step">
+                    <strong>Step 1: MongoDB Atlas Base Cost</strong><br>
+                    Base price: $394/month for M30 tier<br>
+                    Annual base price: $394 × 12 = $4,728/year
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 2: Calculate Actual Data Size</strong><br>
+                    M30 included storage: 40GB<br>
+                    Data usage: 70%<br>
+                    Actual data size: 40GB × 70% = 28GB
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 3: Atlas Backup Costs</strong><br>
+                    <u>Continuous backup cost (tiered pricing):</u><br>
+                    &nbsp;&nbsp;- Estimated oplog size: 28GB × 20% = 5.6GB<br>
+                    &nbsp;&nbsp;- Combined snapshot + oplog size: 28GB + 5.6GB = 33.6GB<br>
+                    &nbsp;&nbsp;- Tier 1 (0-5GB): 5GB × $0.00 = $0.00<br>
+                    &nbsp;&nbsp;- Tier 2 (5-33.6GB): 28.6GB × $1.00 = $28.60<br>
+                    &nbsp;&nbsp;- Total continuous backup cost: $28.60/month ($343.20/year)<br>
+                    <u>Snapshot backup cost using GB-days pricing:</u><br>
+                    &nbsp;&nbsp;- GB-day rate: ($0.10 × 12)/365 = $0.003288 per GB-day<br>
+                    &nbsp;&nbsp;- Average retention: 30 days<br>
+                    &nbsp;&nbsp;- Monthly snapshot cost: 28GB × 30 days × $0.003288 = $2.76/month ($33.12/year)<br>
+                    Base + Backup subtotal: $394 + $28.60 + $2.76 = <strong>$425.36/month ($5,104.32/year)</strong>
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 4: Atlas Support Cost</strong><br>
+                    Support cost (calculated on base + backup): $425.36 × 70% = $297.75/month ($3,573.00/year)<br>
+                    Total before discount: $425.36 + $297.75 = <strong>$723.11/month ($8,677.32/year)</strong>
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 5: Apply Enterprise Discount (if enabled)</strong><br>
+                    When discount is enabled:<br>
+                    - Support drops to 37%: $425.36 × 37% = $157.38/month ($1,888.56/year)<br>
+                    - New subtotal = $425.36 + $157.38 = $582.74/month ($6,992.88/year)<br>
+                    - Discount: 17% of $582.74 = $99.07/month ($1,188.84/year)<br>
+                    - Final Atlas cost = $582.74 - $99.07 = <strong>$483.67/month ($5,804.04/year)</strong>
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 6: Calculate Operations per Second with Utilization Factor</strong><br>
+                    M30 peak operations: 2,800 ops/sec<br>
+                    Utilization factor: 50%<br>
+                    Effective operations: 2,800 × 50% = 1,400 ops/sec<br>
+                    <br>
+                    Effective read operations: 1,400 × 70% = 980 reads/sec<br>
+                    Effective write operations: 1,400 × 30% = 420 writes/sec
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 7: Convert to DynamoDB Request Units</strong><br>
+                    <u>For reads:</u><br>
+                    - 1 RRU (Read Request Unit) can read items up to 4KB for strongly consistent reads<br>
+                    - For 2KB items: 1 RRU per read<br>
+                    - Total RRUs/sec: 980 reads/sec × 1 RRU = 980 RRUs/sec<br>
+                    <br>
+                    <u>For writes:</u><br>
+                    - 1 WRU (Write Request Unit) can write items up to 1KB<br>
+                    - For 2KB items: 2 WRUs per write<br>
+                    - Total WRUs/sec: 420 writes/sec × 2 WRUs = 840 WRUs/sec
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 8: Calculate Monthly RRUs and WRUs</strong><br>
+                    Seconds in a month: 30 days × 24 hours × 60 minutes × 60 seconds = 2,592,000 seconds<br>
+                    <br>
+                    Monthly RRUs: 980 RRUs/sec × 2,592,000 seconds = 2,540,160,000 RRUs<br>
+                    In millions: 2,540,160,000 ÷ 1,000,000 = 2,540.16 million RRUs<br>
+                    <br>
+                    Monthly WRUs: 840 WRUs/sec × 2,592,000 seconds = 2,177,280,000 WRUs<br>
+                    In millions: 2,177,280,000 ÷ 1,000,000 = 2,177.28 million WRUs
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 9: Calculate DynamoDB Base Costs</strong><br>
+                    <u>Read cost:</u><br>
+                    - RRU price: $0.125 per million RRUs<br>
+                    - Total read cost: 2,540.16 million RRUs × $0.125 = $317.52/month ($3,810.24/year)<br>
+                    <br>
+                    <u>Write cost:</u><br>
+                    - WRU price: $0.625 per million WRUs<br>
+                    - Total write cost: 2,177.28 million WRUs × $0.625 = $1,360.80/month ($16,329.60/year)<br>
+                    <br>
+                    <u>Storage cost:</u><br>
+                    - Actual data size: 28GB<br>
+                    - Free tier: First 25GB free<br>
+                    - Billable storage: 28GB - 25GB = 3GB<br>
+                    - Storage price: $0.25 per GB-month<br>
+                    - Total storage cost: 3GB × $0.25 = $0.75/month ($9.00/year)
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 10: DynamoDB Base Monthly Cost</strong><br>
+                    Base monthly cost: $317.52 + $1,360.80 + $0.75 = $1,679.07/month ($20,148.84/year)
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 11: AWS Business Support Cost (Tiered)</strong><br>
+                    - 10% of first $10,000: $1,679.07 × 10% = $167.91/month ($2,014.92/year)<br>
+                    - 7% of next amount ($1,679.07 - $10,000): No charge (base cost < $10,000)<br>
+                        Total support cost: $167.91/month ($2,014.92/year)
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 12: DynamoDB Backup Costs</strong><br>
+                    Point-in-Time Recovery: 28GB × $0.20 = $5.60/month ($67.20/year)<br>
+                    On-Demand Backup: 28GB × $0.10 = $2.80/month ($33.60/year)<br>
+                    Total backup costs: $8.40/month ($100.80/year)
+                </div>
+
+                <div class="math-step">
+                    <strong>Step 13: Total DynamoDB Monthly Cost</strong><br>
+                    $1,679.07 + $167.91 + $8.40 = $1,855.38/month ($22,264.56/year)
+                </div>
+
+                <div class="math-result">
+                    <strong>Final Comparison with 50% Utilization:</strong><br>
+                    MongoDB Atlas total: $483.67/month ($5,804.04/year) (with discount)<br>
+                    DynamoDB total: $1,855.38/month ($22,264.56/year)<br>
+                    <strong>Cost ratio:</strong> $1,855.38 ÷ $483.67 = 3.8x more expensive than Atlas
+                </div>
+
+                <div class="math-step" style="margin-top: 20px;">
+                    <strong>Impact of Utilization on Pricing:</strong><br>
+                    If utilization drops to 12%, DynamoDB would cost approximately $445/month, making it
+                    less expensive than Atlas in this scenario. This demonstrates how critical the actual utilization
+                    pattern is when
+                    comparing fixed-cost vs. usage-based pricing models.
+                </div>
+            </div>
+
+            <div class="info-box" style="margin-top: 20px;">
+                <h3>Understanding the Utilization Impact on Cost-Effectiveness</h3>
+                <p>The utilization slider demonstrates why database choice depends heavily on your actual usage
+                    patterns:</p>
+                <ul>
+                    <li><strong>MongoDB Atlas</strong> has a fixed cost model ($483.67/month for M30 with discounts)
+                        regardless of utilization</li>
+                    <li><strong>DynamoDB</strong> has a strictly usage-based pricing model that scales linearly with
+                        your actual operations</li>
+                </ul>
+                <p><strong>At 50% utilization</strong> (1,400 ops/sec for M30), DynamoDB costs approximately
+                    $1,855/month.</p>
+                <p><strong>At 12% utilization</strong> (336 ops/sec for M30), DynamoDB costs approximately $445/month,
+                    making it roughly equivalent to Atlas.</p>
+                <p>This explains why:</p>
+                <ul>
+                    <li>DynamoDB is more cost-effective for highly variable or low-utilization workloads (<15% of Atlas
+                            capacity)</li>
+                    <li>MongoDB Atlas is more cost-effective for stable, predictable workloads with moderate to high
+                        utilization (>30%)</li>
+                </ul>
+                <p>Try adjusting the utilization slider to find the "breakeven point" for your specific tier and
+                    requirements.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="logic.js"></script>
+
+</body>
+
+</html>
