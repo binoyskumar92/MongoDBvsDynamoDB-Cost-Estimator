@@ -407,6 +407,8 @@ function updateTable(comparisonData) {
     // Update M30 details
     const m30 = comparisonData[2];
     const backupDetails = m30.details;
+    const crossRegionReplicas = parseInt(crossRegionSlider.value);
+    const transactionPercentage = parseInt(transactionSlider.value);
 
     m30Details.innerHTML = `
 <h3>Detailed Cost Breakdown for M30 Tier (${m30.actualDataSize}GB actual data, ${utilizationSlider.value}% utilization)</h3>
@@ -425,13 +427,14 @@ function updateTable(comparisonData) {
     <div style="flex: 1; min-width: 300px;">
         <h4>DynamoDB Costs</h4>
         <p>Actual Operations: ${m30.effectiveOps}/sec (${utilizationSlider.value}% of ${atlasTiers[2].ops}/sec)</p>
+        ${transactionPercentage > 0 ? `<p><em>ACID Transactions: +${transactionPercentage}% operational overhead</em></p>` : ''}
+        ${crossRegionReplicas > 0 ? `<p><em>Cross-Region: ${crossRegionReplicas} additional region(s) = ${crossRegionReplicas + 1}x write amplification</em></p>` : ''}
         <p>Read Operations: $${backupDetails.readCost}/month ($${(backupDetails.readCost * 12).toLocaleString()}/year)</p>
         <p>Write Operations: $${backupDetails.writeCost}/month ($${(backupDetails.writeCost * 12).toLocaleString()}/year)</p>
         <p>Storage: $${backupDetails.storageCost}/month ($${(backupDetails.storageCost * 12).toLocaleString()}/year)</p>
         <p>Business Support (Tiered): $${backupDetails.dynamoSupportCost}/month ($${(backupDetails.dynamoSupportCost * 12).toLocaleString()}/year)</p>
         <p>Point-in-Time Recovery (PITR): $${backupDetails.pitrCost}/month ($${(backupDetails.pitrCost * 12).toLocaleString()}/year)</p>
         <p>On-Demand Backup (${backupDetails.totalBackupStorage}GB storage): $${backupDetails.onDemandBackupCost}/month ($${(backupDetails.onDemandBackupCost * 12).toLocaleString()}/year)</p>
-        <p>Cross-Region Replication: $${backupDetails.crossRegionCost}/month ($${(backupDetails.crossRegionCost * 12).toLocaleString()}/year)</p>
         <p><strong>Total DynamoDB Cost: $${m30.dynamoTotalPrice}/month ($${(m30.dynamoTotalPrice * 12).toLocaleString()}/year)</strong></p>
     </div>
 </div>
