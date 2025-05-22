@@ -35,6 +35,10 @@ const DYNAMO_SNAPSHOT_PRICE = 0.10; // Per GB per month for on-demand backups
 // Convert monthly rate to daily rate: (monthly_rate * 12) / 365
 const ATLAS_SNAPSHOT_GB_DAY_RATE = (ATLAS_SNAPSHOT_BACKUP_PRICE * 12) / 365;
 
+// DynamoDB backup storage multiplier based on AWS official example
+// AWS example: 27GB table with 60GB backup storage = 2.22x multiplier
+const DYNAMO_BACKUP_STORAGE_MULTIPLIER = 2.2;
+
 // Atlas snapshot retention based on actual backup policy
 const ATLAS_SNAPSHOT_RETENTION = {
     hourly: {
@@ -108,6 +112,21 @@ function calculateAtlasSnapshotBackupCost(actualDataSize) {
     return totalMonthlyGBDays * ATLAS_SNAPSHOT_GB_DAY_RATE;
 }
 
+// Calculate DynamoDB snapshot backup cost using AWS official pricing model
+function calculateDynamoSnapshotCost(actualDataSize) {
+    if (!dynamoSnapshotBackupToggle.checked) {
+        return 0;
+    }
+
+    // DynamoDB charges based on total backup storage size, not GB-days
+    // AWS official example: 27GB table with 60GB backup storage (2.2x multiplier)
+    // This accounts for multiple retained backups as per typical retention policies
+    const totalBackupStorage = actualDataSize * DYNAMO_BACKUP_STORAGE_MULTIPLIER;
+
+    // Cost = total backup storage * price per GB per month
+    return totalBackupStorage * DYNAMO_SNAPSHOT_PRICE;
+}
+
 // Calculate MongoDB Atlas continuous backup cost using tiered pricing
 function calculateAtlasContinuousBackupCost(actualDataSize) {
     if (!atlasContinuousBackupToggle.checked) {
@@ -144,18 +163,6 @@ function calculateDynamoPITRCost(actualDataSize) {
 
     // DynamoDB PITR is charged per GB-month based on table size
     return actualDataSize * DYNAMO_PITR_PRICE;
-}
-
-// Calculate DynamoDB on-demand backup cost
-function calculateDynamoSnapshotCost(actualDataSize) {
-    if (!dynamoSnapshotBackupToggle.checked) {
-        return 0;
-    }
-
-    // DynamoDB on-demand backup is charged per GB-month
-    // Using warm backup storage pricing ($0.10/GB-month)
-    // Cold backup storage ($0.03/GB-month) is available but requires AWS Backup
-    return actualDataSize * DYNAMO_SNAPSHOT_PRICE;
 }
 
 // Function to calculate the overall Atlas total cost 
@@ -282,6 +289,7 @@ function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utiliz
                 dynamoSupportCost: Math.round(supportCost),
                 dynamoPitrCost: Math.round(dynamoPitrCost),
                 dynamoSnapshotCost: Math.round(dynamoSnapshotCost),
+                dynamoBackupStorageSize: Math.round(actualDataSize * DYNAMO_BACKUP_STORAGE_MULTIPLIER * 10) / 10,
                 atlasSupportCost: atlasSupportToggle.checked
                     ? Math.round((tier.price +
                         calculateAtlasContinuousBackupCost(actualDataSize) +
@@ -404,7 +412,7 @@ function updateTable(comparisonData) {
         <p>Storage: $${m30.details.storageCost}/month ($${(m30.details.storageCost * 12).toLocaleString()}/year)</p>
         <p>Business Support (Tiered): $${m30.details.dynamoSupportCost}/month ($${(m30.details.dynamoSupportCost * 12).toLocaleString()}/year)</p>
         <p>Point-in-Time Recovery (PITR): $${m30.details.dynamoPitrCost}/month ($${(m30.details.dynamoPitrCost * 12).toLocaleString()}/year)</p>
-        <p>On-Demand Backup: $${m30.details.dynamoSnapshotCost}/month ($${(m30.details.dynamoSnapshotCost * 12).toLocaleString()}/year)</p>
+        <p>On-Demand Backup (${m30.details.dynamoBackupStorageSize}GB storage): $${m30.details.dynamoSnapshotCost}/month ($${(m30.details.dynamoSnapshotCost * 12).toLocaleString()}/year)</p>
         <p><strong>Total DynamoDB Cost: $${m30.dynamoTotalPrice}/month ($${(m30.dynamoTotalPrice * 12).toLocaleString()}/year)</strong></p>
     </div>
 </div>
@@ -415,20 +423,20 @@ function updateTable(comparisonData) {
         <div style="flex: 1; min-width: 200px;">
             <h5>MongoDB Atlas Backups</h5>
             <p>• Continuous: $${m30.details.atlasContinuousBackupCost.toFixed(2)}/month</p>
-            <p>• Snapshots: $${m30.details.atlasSnapshotBackupCost.toFixed(2)}/month</p>
+            <p>• Snapshots (GB-days model): $${m30.details.atlasSnapshotBackupCost.toFixed(2)}/month</p>
             <p><strong>Total: $${(m30.details.atlasContinuousBackupCost + m30.details.atlasSnapshotBackupCost).toFixed(2)}/month</strong></p>
         </div>
         <div style="flex: 1; min-width: 200px;">
             <h5>DynamoDB Backups</h5>
             <p>• PITR: $${m30.details.dynamoPitrCost}/month</p>
-            <p>• On-Demand: $${m30.details.dynamoSnapshotCost}/month</p>
+            <p>• On-Demand (${m30.details.dynamoBackupStorageSize}GB total): $${m30.details.dynamoSnapshotCost}/month</p>
             <p><strong>Total: $${(m30.details.dynamoPitrCost + m30.details.dynamoSnapshotCost)}/month</strong></p>
         </div>
     </div>
     <p style="margin-top: 10px; font-style: italic;">
-        Note: Atlas continuous backup uses tiered pricing (first 5GB free, then $1.00/GB up to 100GB, etc.). 
-        Atlas snapshot backup uses GB-days pricing ($0.10/GB/month = $0.003288/GB/day) with 30-day avg retention.
-        DynamoDB PITR is a flat $0.20/GB/month, and on-demand backups are $0.10/GB/month.
+        Note: Atlas uses GB-days pricing for comprehensive retention (hourly/daily/weekly/monthly/yearly). 
+        DynamoDB uses total backup storage size (${DYNAMO_BACKUP_STORAGE_MULTIPLIER}x table size based on AWS example).
+        Both PITR services charge based on current table size.
     </p>
 </div>
 
