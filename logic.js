@@ -21,18 +21,18 @@ const DYNAMO_STORAGE_PRICE = 0.25; // Per GB
 const DYNAMO_FREE_STORAGE = 25; // First 25GB free
 const SECONDS_PER_MONTH = 2592000; // 30 days
 
+// DynamoDB backup and additional costs
+const DYNAMO_PITR_PRICE = 0.20; // Per GB per month for PITR
+const DYNAMO_ONDEMAND_BACKUP_PRICE = 0.10; // Per GB per month for on-demand backups
+const DYNAMO_DATA_TRANSFER_PRICE = 0.09; // Per GB for cross-region transfer
+
 // Support and backup pricing
 const ATLAS_SUPPORT_PERCENTAGE_FULL = 0.70;
 const ATLAS_SUPPORT_PERCENTAGE_DISCOUNTED = 0.37;
 const ATLAS_DISCOUNT_PERCENTAGE = 0.17; // 17% enterprise discount
 
-// Updated constants for backup pricing
+// Atlas backup pricing
 const ATLAS_SNAPSHOT_BACKUP_PRICE = 0.14; // Per GB per month base rate for snapshot backup
-const DYNAMO_PITR_PRICE = 0.20; // Per GB per month for PITR
-const DYNAMO_SNAPSHOT_PRICE = 0.10; // Per GB per month for on-demand backups
-
-// Atlas snapshot backup pricing - using GB-days model
-// Convert monthly rate to daily rate: (monthly_rate * 12) / 365
 const ATLAS_SNAPSHOT_GB_DAY_RATE = (ATLAS_SNAPSHOT_BACKUP_PRICE * 12) / 365;
 
 // Atlas snapshot retention based on actual backup policy
@@ -59,32 +59,80 @@ const ATLAS_SNAPSHOT_RETENTION = {
     }
 };
 
+// DynamoDB snapshot retention - removed, using simple multiplier instead
+// const DYNAMO_SNAPSHOT_RETENTION = { ... };
+
 // Atlas continuous backup tiered pricing for AWS (per GB per month)
 const ATLAS_CONTINUOUS_BACKUP_TIERS = [
-    { min: 0, max: 5, rate: 0.00 },      // First 5GB free
-    { min: 5, max: 100, rate: 1.00 },    // 5-100GB at $1.00/GB
-    { min: 100, max: 250, rate: 0.75 },  // 100-250GB at $0.75/GB
-    { min: 250, max: 500, rate: 0.50 },  // 250-500GB at $0.50/GB
-    { min: 500, max: Infinity, rate: 0.25 } // >500GB at $0.25/GB
+    { min: 0, max: 5, rate: 0.00 },
+    { min: 5, max: 100, rate: 1.00 },
+    { min: 100, max: 250, rate: 0.75 },
+    { min: 250, max: 500, rate: 0.50 },
+    { min: 500, max: Infinity, rate: 0.25 }
 ];
 
 // AWS Business Support pricing tiers
 const AWS_BUSINESS_SUPPORT_TIERS = [
-    { min: 0, max: 10000, rate: 0.10 },
-    { min: 10000, max: 80000, rate: 0.07 },
-    { min: 80000, max: 250000, rate: 0.05 },
-    { min: 250000, max: Infinity, rate: 0.03 }
+    { min: 0, max: 10000, rate: 0.10, minimum: 100 },
+    { min: 10000, max: 80000, rate: 0.07, minimum: 0 },
+    { min: 80000, max: 250000, rate: 0.05, minimum: 0 },
+    { min: 250000, max: Infinity, rate: 0.03, minimum: 0 }
 ];
 
 // DOM elements - will be initialized when DOM loads
 let readRatioSlider, itemSizeSlider, dataUsageSlider, utilizationSlider;
+let crossRegionSlider, transactionSlider, crossRegionValue, transactionValue;
 let readRatioValue, writeRatioValue, itemSizeValue, dataUsageValue, utilizationValue;
 let tableBody, m30Details;
 let atlasSupportToggle, atlasDiscountToggle, atlasContinuousBackupToggle, atlasSnapshotBackupToggle;
-let dynamoSupportToggle, dynamoBackupToggle, dynamoSnapshotBackupToggle;
+let dynamoSupportToggle, dynamoBackupToggle, dynamoSnapshotBackupToggle, dynamoCrossRegionToggle;
 
 // Chart initialization
 let costChart = null;
+
+// Calculate DynamoDB backup costs using realistic storage multipliers
+function calculateDynamoBackupCosts(actualDataSize) {
+    let costs = {
+        onDemandBackupCost: 0,
+        pitrCost: 0,
+        crossRegionCost: 0,
+        totalBackupCost: 0,
+        totalBackupStorage: 0
+    };
+
+    if (!dynamoSnapshotBackupToggle.checked && !dynamoBackupToggle.checked) {
+        return costs;
+    }
+
+    // Calculate on-demand backup storage using realistic enterprise multiplier
+    if (dynamoSnapshotBackupToggle.checked) {
+        // Typical enterprise backup retention results in 15-20x table size in total backup storage
+        // This accounts for: daily (30 days) + weekly (12 weeks) + monthly (12 months) + yearly (7 years)
+        const backupStorageMultiplier = 18; // Conservative enterprise estimate
+        const totalBackupStorage = actualDataSize * backupStorageMultiplier;
+
+        costs.onDemandBackupCost = totalBackupStorage * DYNAMO_ONDEMAND_BACKUP_PRICE;
+        costs.totalBackupStorage = Math.round(totalBackupStorage * 10) / 10; // Round for display
+    }
+
+    // PITR cost (continuous backup)
+    if (dynamoBackupToggle.checked) {
+        costs.pitrCost = actualDataSize * DYNAMO_PITR_PRICE;
+    }
+
+    // Cross-region replication costs (for disaster recovery)
+    if (dynamoCrossRegionToggle && dynamoCrossRegionToggle.checked) {
+        // Additional storage in secondary region
+        costs.crossRegionCost += actualDataSize * DYNAMO_STORAGE_PRICE;
+        // Data transfer costs for initial replication
+        costs.crossRegionCost += actualDataSize * DYNAMO_DATA_TRANSFER_PRICE;
+        // Monthly change volume (~10% of data size)
+        costs.crossRegionCost += (actualDataSize * 0.1) * DYNAMO_DATA_TRANSFER_PRICE;
+    }
+
+    costs.totalBackupCost = costs.onDemandBackupCost + costs.pitrCost + costs.crossRegionCost;
+    return costs;
+}
 
 // Calculate MongoDB Atlas snapshot backup cost with actual retention policy
 function calculateAtlasSnapshotBackupCost(actualDataSize) {
@@ -114,12 +162,9 @@ function calculateAtlasContinuousBackupCost(actualDataSize) {
         return 0;
     }
 
-    // For continuous backups, we need to estimate the combined snapshot + oplog size
-    // Typically, the oplog is a fraction of the data size (let's estimate 20% for calculation)
     const oplogSizeEstimate = actualDataSize * 0.20;
     const combinedSize = actualDataSize + oplogSizeEstimate;
 
-    // Calculate cost using tiered pricing
     let totalCost = 0;
     let remainingSize = combinedSize;
 
@@ -136,65 +181,7 @@ function calculateAtlasContinuousBackupCost(actualDataSize) {
     return totalCost;
 }
 
-// Calculate DynamoDB Point-in-Time Recovery (PITR) cost
-function calculateDynamoPITRCost(actualDataSize) {
-    if (!dynamoBackupToggle.checked) {
-        return 0;
-    }
-
-    // DynamoDB PITR is charged per GB-month based on table size
-    return actualDataSize * DYNAMO_PITR_PRICE;
-}
-
-// Calculate DynamoDB on-demand backup cost
-function calculateDynamoSnapshotCost(actualDataSize) {
-    if (!dynamoSnapshotBackupToggle.checked) {
-        return 0;
-    }
-
-    // DynamoDB on-demand backup is charged per GB-month
-    // Using warm backup storage pricing ($0.10/GB-month)
-    // Cold backup storage ($0.03/GB-month) is available but requires AWS Backup
-    return actualDataSize * DYNAMO_SNAPSHOT_PRICE;
-}
-
-// Function to calculate the overall Atlas total cost 
-function calculateAtlasTotalCost(basePrice, includedStorageGB, dataUsagePercentage) {
-    const actualDataSize = calculateActualDataSize(includedStorageGB, dataUsagePercentage);
-
-    // Calculate backup costs
-    const continuousBackupCost = calculateAtlasContinuousBackupCost(actualDataSize);
-    const snapshotBackupCost = calculateAtlasSnapshotBackupCost(actualDataSize);
-
-    // Base cost + backup costs
-    const baseAndBackupSubtotal = basePrice + continuousBackupCost + snapshotBackupCost;
-
-    // Calculate support cost (based on base + backup subtotal)
-    let supportCost = 0;
-    if (atlasSupportToggle.checked) {
-        const supportRate = atlasDiscountToggle.checked
-            ? ATLAS_SUPPORT_PERCENTAGE_DISCOUNTED
-            : ATLAS_SUPPORT_PERCENTAGE_FULL;
-        supportCost = baseAndBackupSubtotal * supportRate;
-    }
-
-    // Total before discount
-    let totalCost = baseAndBackupSubtotal + supportCost;
-
-    // Apply discount to entire bundle if enabled
-    if (atlasDiscountToggle.checked) {
-        totalCost -= totalCost * ATLAS_DISCOUNT_PERCENTAGE;
-    }
-
-    return totalCost;
-}
-
-// Calculate actual data size based on usage percentage
-function calculateActualDataSize(includedStorageGB, usagePercentage) {
-    return includedStorageGB * (usagePercentage / 100);
-}
-
-// Calculate AWS Business Support cost based on tiered pricing
+// Calculate AWS Business Support cost with minimums
 function calculateAWSBusinessSupportCost(monthlyAWSBill) {
     if (!dynamoSupportToggle.checked) {
         return 0;
@@ -213,56 +200,91 @@ function calculateAWSBusinessSupportCost(monthlyAWSBill) {
         }
     }
 
+    // Apply minimum if applicable (first tier only)
+    if (monthlyAWSBill > 0 && supportCost < AWS_BUSINESS_SUPPORT_TIERS[0].minimum) {
+        supportCost = AWS_BUSINESS_SUPPORT_TIERS[0].minimum;
+    }
+
     return supportCost;
+}
+
+// Function to calculate the overall Atlas total cost 
+function calculateAtlasTotalCost(basePrice, includedStorageGB, dataUsagePercentage) {
+    const actualDataSize = calculateActualDataSize(includedStorageGB, dataUsagePercentage);
+
+    const continuousBackupCost = calculateAtlasContinuousBackupCost(actualDataSize);
+    const snapshotBackupCost = calculateAtlasSnapshotBackupCost(actualDataSize);
+
+    const baseAndBackupSubtotal = basePrice + continuousBackupCost + snapshotBackupCost;
+
+    let supportCost = 0;
+    if (atlasSupportToggle.checked) {
+        const supportRate = atlasDiscountToggle.checked
+            ? ATLAS_SUPPORT_PERCENTAGE_DISCOUNTED
+            : ATLAS_SUPPORT_PERCENTAGE_FULL;
+        supportCost = baseAndBackupSubtotal * supportRate;
+    }
+
+    let totalCost = baseAndBackupSubtotal + supportCost;
+
+    if (atlasDiscountToggle.checked) {
+        totalCost -= totalCost * ATLAS_DISCOUNT_PERCENTAGE;
+    }
+
+    return totalCost;
+}
+
+// Calculate actual data size based on usage percentage
+function calculateActualDataSize(includedStorageGB, usagePercentage) {
+    return includedStorageGB * (usagePercentage / 100);
 }
 
 // Calculate DynamoDB costs for each Atlas tier
 function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utilizationPercentage) {
+    const crossRegionReplicas = parseInt(crossRegionSlider.value);
+    const transactionPercentage = parseInt(transactionSlider.value);
     return atlasTiers.map(tier => {
-        // Calculate actual data size
         const actualDataSize = calculateActualDataSize(tier.storage, dataUsagePercentage);
-
-        // Apply utilization factor to operations (DynamoDB is usage-based)
         const effectiveOps = tier.ops * (utilizationPercentage / 100);
 
-        // Split operations into reads and writes based on read ratio
         const readsPerSec = effectiveOps * (readRatio / 100);
         const writesPerSec = effectiveOps * (1 - readRatio / 100);
 
-        // Calculate capacity units needed based on item size
-        const rruPerRead = Math.ceil(itemSizeKB / 4); // 4KB per RRU for consistent reads
-        const wruPerWrite = Math.ceil(itemSizeKB / 1); // 1KB per WRU
+        const rruPerRead = Math.ceil(itemSizeKB / 4);
+        const wruPerWrite = Math.ceil(itemSizeKB / 1);
 
         const rrusPerSec = readsPerSec * rruPerRead;
         const wrusPerSec = writesPerSec * wruPerWrite;
 
-        // Monthly calculations
-        const totalRrus = rrusPerSec * SECONDS_PER_MONTH / 1000000; // In millions
-        const totalWrus = wrusPerSec * SECONDS_PER_MONTH / 1000000; // In millions
+        const transactionMultiplier = 1 + (transactionPercentage / 100);
+        const adjustedRRUs = rrusPerSec * transactionMultiplier;
+        const adjustedWRUs = wrusPerSec * transactionMultiplier;
 
-        // Calculate base costs
+        // Apply cross-region write amplification
+        const crossRegionWriteMultiplier = 1 + crossRegionReplicas;
+        const finalRRUs = adjustedRRUs;  // Reads don't amplify
+        const finalWRUs = adjustedWRUs * crossRegionWriteMultiplier;
+
+        const totalRrus = finalRRUs * SECONDS_PER_MONTH / 1000000;
+        const totalWrus = finalWRUs * SECONDS_PER_MONTH / 1000000;
+
         const readCost = totalRrus * DYNAMO_RRU_PRICE;
         const writeCost = totalWrus * DYNAMO_WRU_PRICE;
 
-        // Storage cost (first 25GB free)
         const billableStorage = Math.max(0, actualDataSize - DYNAMO_FREE_STORAGE);
         const storageCost = billableStorage * DYNAMO_STORAGE_PRICE;
 
         let dynamoBaseCost = readCost + writeCost + storageCost;
 
-        // Calculate AWS Business Support cost (tiered pricing)
-        const supportCost = calculateAWSBusinessSupportCost(dynamoBaseCost);
-
-        let dynamoTotalCost = dynamoBaseCost + supportCost;
-
         // Calculate backup costs
-        const dynamoPitrCost = calculateDynamoPITRCost(actualDataSize);
-        const dynamoSnapshotCost = calculateDynamoSnapshotCost(actualDataSize);
+        const backupCosts = calculateDynamoBackupCosts(actualDataSize);
 
-        // Add backup costs to total
-        dynamoTotalCost += dynamoPitrCost + dynamoSnapshotCost;
+        // Add backup costs to base cost for support calculation
+        const costForSupportCalculation = dynamoBaseCost + backupCosts.totalBackupCost;
+        const supportCost = calculateAWSBusinessSupportCost(costForSupportCalculation);
 
-        // Calculate Atlas total cost
+        const dynamoTotalCost = costForSupportCalculation + supportCost;
+
         const atlasTotalCost = calculateAtlasTotalCost(tier.price, tier.storage, dataUsagePercentage);
 
         return {
@@ -280,8 +302,11 @@ function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utiliz
                 writeCost: Math.round(writeCost),
                 storageCost: Math.round(storageCost),
                 dynamoSupportCost: Math.round(supportCost),
-                dynamoPitrCost: Math.round(dynamoPitrCost),
-                dynamoSnapshotCost: Math.round(dynamoSnapshotCost),
+                ...Object.fromEntries(
+                    Object.entries(backupCosts).map(([key, value]) =>
+                        [key, typeof value === 'number' ? Math.round(value) : value]
+                    )
+                ),
                 atlasSupportCost: atlasSupportToggle.checked
                     ? Math.round((tier.price +
                         calculateAtlasContinuousBackupCost(actualDataSize) +
@@ -300,7 +325,6 @@ function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utiliz
 function updateChart(comparisonData) {
     const ctx = document.getElementById('costChart').getContext('2d');
 
-    // Only use first 8 tiers for better chart readability
     const visibleTiers = 8;
     const labels = comparisonData.slice(0, visibleTiers).map(item => item.tier);
     const atlasData = comparisonData.slice(0, visibleTiers).map(item => item.atlasTotalPrice);
@@ -318,15 +342,15 @@ function updateChart(comparisonData) {
                 {
                     label: 'MongoDB Atlas' + (atlasDiscountToggle.checked ? ' (with 17% discount)' : ''),
                     data: atlasData,
-                    backgroundColor: 'rgba(52, 168, 83, 0.7)',  // Changed to green
-                    borderColor: 'rgba(52, 168, 83, 1)',        // Changed to green
+                    backgroundColor: 'rgba(52, 168, 83, 0.7)',
+                    borderColor: 'rgba(52, 168, 83, 1)',
                     borderWidth: 1
                 },
                 {
                     label: 'Amazon DynamoDB' + (utilizationSlider.value < 100 ? ' (' + utilizationSlider.value + '% utilization)' : ''),
                     data: dynamoData,
-                    backgroundColor: 'rgba(66, 133, 244, 0.7)',  // Changed to blue
-                    borderColor: 'rgba(66, 133, 244, 1)',        // Changed to blue
+                    backgroundColor: 'rgba(66, 133, 244, 0.7)',
+                    borderColor: 'rgba(66, 133, 244, 1)',
                     borderWidth: 1
                 }
             ]
@@ -380,8 +404,12 @@ function updateTable(comparisonData) {
         tableBody.appendChild(row);
     });
 
-    // Update M30 details box (index 2 is M30)
+    // Update M30 details
     const m30 = comparisonData[2];
+    const backupDetails = m30.details;
+    const crossRegionReplicas = parseInt(crossRegionSlider.value);
+    const transactionPercentage = parseInt(transactionSlider.value);
+
     m30Details.innerHTML = `
 <h3>Detailed Cost Breakdown for M30 Tier (${m30.actualDataSize}GB actual data, ${utilizationSlider.value}% utilization)</h3>
 
@@ -389,47 +417,26 @@ function updateTable(comparisonData) {
     <div style="flex: 1; min-width: 300px;">
         <h4>MongoDB Atlas Costs</h4>
         <p>Base Cluster Cost: $${m30.atlasBasePrice}/month ($${(m30.atlasBasePrice * 12).toLocaleString()}/year)</p>
-        <p>Continuous Backup (tiered pricing): $${m30.details.atlasContinuousBackupCost.toFixed(2)}/month ($${(m30.details.atlasContinuousBackupCost * 12).toFixed(2)}/year)</p>
-        <p>Snapshot Backup (GB-days pricing): $${m30.details.atlasSnapshotBackupCost.toFixed(2)}/month ($${(m30.details.atlasSnapshotBackupCost * 12).toFixed(2)}/year)</p>
-        <p>Support (${atlasDiscountToggle.checked ? '37' : '70'}%): $${m30.details.atlasSupportCost}/month ($${(m30.details.atlasSupportCost * 12).toLocaleString()}/year)</p>
-        ${atlasDiscountToggle.checked ? `<p>Enterprise Discount (17%): -$${m30.details.atlasDiscountAmount}/month (-$${(m30.details.atlasDiscountAmount * 12).toLocaleString()}/year)</p>` : ''}
+        <p>Continuous Backup (tiered pricing): $${backupDetails.atlasContinuousBackupCost}/month ($${(backupDetails.atlasContinuousBackupCost * 12).toLocaleString()}/year)</p>
+        <p>Snapshot Backup (weekly/monthly/yearly): $${backupDetails.atlasSnapshotBackupCost}/month ($${(backupDetails.atlasSnapshotBackupCost * 12).toLocaleString()}/year)</p>
+        <p>Support (${atlasDiscountToggle.checked ? '37' : '70'}%): $${backupDetails.atlasSupportCost}/month ($${(backupDetails.atlasSupportCost * 12).toLocaleString()}/year)</p>
+        ${atlasDiscountToggle.checked ? `<p>Enterprise Discount (17%): -$${backupDetails.atlasDiscountAmount}/month (-$${(backupDetails.atlasDiscountAmount * 12).toLocaleString()}/year)</p>` : ''}
         <p><strong>Total Atlas Cost: $${m30.atlasTotalPrice}/month ($${(m30.atlasTotalPrice * 12).toLocaleString()}/year)</strong></p>
     </div>
     
     <div style="flex: 1; min-width: 300px;">
         <h4>DynamoDB Costs</h4>
         <p>Actual Operations: ${m30.effectiveOps}/sec (${utilizationSlider.value}% of ${atlasTiers[2].ops}/sec)</p>
-        <p>Read Operations: $${m30.details.readCost}/month ($${(m30.details.readCost * 12).toLocaleString()}/year)</p>
-        <p>Write Operations: $${m30.details.writeCost}/month ($${(m30.details.writeCost * 12).toLocaleString()}/year)</p>
-        <p>Storage: $${m30.details.storageCost}/month ($${(m30.details.storageCost * 12).toLocaleString()}/year)</p>
-        <p>Business Support (Tiered): $${m30.details.dynamoSupportCost}/month ($${(m30.details.dynamoSupportCost * 12).toLocaleString()}/year)</p>
-        <p>Point-in-Time Recovery (PITR): $${m30.details.dynamoPitrCost}/month ($${(m30.details.dynamoPitrCost * 12).toLocaleString()}/year)</p>
-        <p>On-Demand Backup: $${m30.details.dynamoSnapshotCost}/month ($${(m30.details.dynamoSnapshotCost * 12).toLocaleString()}/year)</p>
+        ${transactionPercentage > 0 ? `<p><em>ACID Transactions: +${transactionPercentage}% operational overhead</em></p>` : ''}
+        ${crossRegionReplicas > 0 ? `<p><em>Cross-Region: ${crossRegionReplicas} additional region(s) = ${crossRegionReplicas + 1}x write amplification</em></p>` : ''}
+        <p>Read Operations: $${backupDetails.readCost}/month ($${(backupDetails.readCost * 12).toLocaleString()}/year)</p>
+        <p>Write Operations: $${backupDetails.writeCost}/month ($${(backupDetails.writeCost * 12).toLocaleString()}/year)</p>
+        <p>Storage: $${backupDetails.storageCost}/month ($${(backupDetails.storageCost * 12).toLocaleString()}/year)</p>
+        <p>Business Support (Tiered): $${backupDetails.dynamoSupportCost}/month ($${(backupDetails.dynamoSupportCost * 12).toLocaleString()}/year)</p>
+        <p>Point-in-Time Recovery (PITR): $${backupDetails.pitrCost}/month ($${(backupDetails.pitrCost * 12).toLocaleString()}/year)</p>
+        <p>On-Demand Backup (${backupDetails.totalBackupStorage}GB storage): $${backupDetails.onDemandBackupCost}/month ($${(backupDetails.onDemandBackupCost * 12).toLocaleString()}/year)</p>
         <p><strong>Total DynamoDB Cost: $${m30.dynamoTotalPrice}/month ($${(m30.dynamoTotalPrice * 12).toLocaleString()}/year)</strong></p>
     </div>
-</div>
-
-<div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 6px;">
-    <h4>Backup Cost Comparison for ${m30.actualDataSize}GB Data</h4>
-    <div style="display: flex; flex-wrap: wrap; gap: 20px;">
-        <div style="flex: 1; min-width: 200px;">
-            <h5>MongoDB Atlas Backups</h5>
-            <p>• Continuous: $${m30.details.atlasContinuousBackupCost.toFixed(2)}/month</p>
-            <p>• Snapshots: $${m30.details.atlasSnapshotBackupCost.toFixed(2)}/month</p>
-            <p><strong>Total: $${(m30.details.atlasContinuousBackupCost + m30.details.atlasSnapshotBackupCost).toFixed(2)}/month</strong></p>
-        </div>
-        <div style="flex: 1; min-width: 200px;">
-            <h5>DynamoDB Backups</h5>
-            <p>• PITR: $${m30.details.dynamoPitrCost}/month</p>
-            <p>• On-Demand: $${m30.details.dynamoSnapshotCost}/month</p>
-            <p><strong>Total: $${(m30.details.dynamoPitrCost + m30.details.dynamoSnapshotCost)}/month</strong></p>
-        </div>
-    </div>
-    <p style="margin-top: 10px; font-style: italic;">
-        Note: Atlas continuous backup uses tiered pricing (first 5GB free, then $1.00/GB up to 100GB, etc.). 
-        Atlas snapshot backup uses GB-days pricing ($0.10/GB/month = $0.003288/GB/day) with 30-day avg retention.
-        DynamoDB PITR is a flat $0.20/GB/month, and on-demand backups are $0.10/GB/month.
-    </p>
 </div>
 
 <p style="font-weight: 500; margin-top: 10px;">With these parameters, DynamoDB is ${m30.costRatio}x ${m30.costRatio >= 1 ? 'more expensive than' : 'cheaper than'} MongoDB Atlas M30.</p>
@@ -442,12 +449,16 @@ function updateUI() {
     const itemSize = parseInt(itemSizeSlider.value);
     const dataUsage = parseInt(dataUsageSlider.value);
     const utilization = parseInt(utilizationSlider.value);
+    const crossRegion = parseInt(crossRegionSlider.value);
+    const transaction = parseInt(transactionSlider.value);
 
     readRatioValue.textContent = readRatio;
     writeRatioValue.textContent = 100 - readRatio;
     itemSizeValue.textContent = itemSize;
     dataUsageValue.textContent = dataUsage;
     utilizationValue.textContent = utilization;
+    crossRegionValue.textContent = crossRegion;
+    transactionValue.textContent = transaction;
 
     const comparisonData = calculateDynamoCosts(readRatio, itemSize, dataUsage, utilization);
     updateChart(comparisonData);
@@ -476,6 +487,11 @@ function initializeApp() {
     dynamoSupportToggle = document.getElementById('dynamoSupportToggle');
     dynamoBackupToggle = document.getElementById('dynamoBackupToggle');
     dynamoSnapshotBackupToggle = document.getElementById('dynamoSnapshotBackupToggle');
+    dynamoCrossRegionToggle = document.getElementById('dynamoCrossRegionToggle');
+    crossRegionSlider = document.getElementById('crossRegionSlider');
+    transactionSlider = document.getElementById('transactionSlider');
+    crossRegionValue = document.getElementById('crossRegionValue');
+    transactionValue = document.getElementById('transactionValue');
 
     // Event listeners
     readRatioSlider.addEventListener('input', updateUI);
@@ -489,6 +505,12 @@ function initializeApp() {
     dynamoSupportToggle.addEventListener('change', updateUI);
     dynamoBackupToggle.addEventListener('change', updateUI);
     dynamoSnapshotBackupToggle.addEventListener('change', updateUI);
+    crossRegionSlider.addEventListener('input', updateUI);
+    transactionSlider.addEventListener('input', updateUI);
+
+    if (dynamoCrossRegionToggle) {
+        dynamoCrossRegionToggle.addEventListener('change', updateUI);
+    }
 
     // Initialize the UI
     updateUI();
