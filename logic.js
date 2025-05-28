@@ -14,9 +14,25 @@ const atlasTiers = [
     { tier: "M700", ram: 768, vcpu: 96, storage: 4000, price: 33260, ops: 33600 }
 ];
 
-// DynamoDB pricing constants
-const DYNAMO_RRU_PRICE = 0.125; // Per million
-const DYNAMO_WRU_PRICE = 0.625; // Per million
+// DynamoDB pricing rates (corrected structure and rates)
+const DYNAMO_PRICING_RATES = {
+    'on-demand': {
+        read_rate_per_million: 0.125,    // $0.125 per million reads
+        write_rate_per_million: 0.625,   // $0.625 per million writes
+        description: "On-demand pricing - pay per actual request"
+    },
+    'provisioned': {
+        rcu_hourly_rate: 0.00013,        // $0.00013 per RCU per hour
+        wcu_hourly_rate: 0.00065,        // $0.00065 per WCU per hour
+        description: "Provisioned capacity - pay for reserved throughput"
+    },
+    'reserved': {
+        rcu_hourly_rate: 0.00005925,     // Lower rates with 1-year commitment
+        wcu_hourly_rate: 0.00029923,
+        description: "Reserved capacity (1-year commitment)"
+    }
+};
+
 const DYNAMO_STORAGE_PRICE = 0.25; // Per GB
 const DYNAMO_FREE_STORAGE = 25; // First 25GB free
 const SECONDS_PER_MONTH = 2592000; // 30 days
@@ -59,9 +75,6 @@ const ATLAS_SNAPSHOT_RETENTION = {
     }
 };
 
-// DynamoDB snapshot retention - removed, using simple multiplier instead
-// const DYNAMO_SNAPSHOT_RETENTION = { ... };
-
 // Atlas continuous backup tiered pricing for AWS (per GB per month)
 const ATLAS_CONTINUOUS_BACKUP_TIERS = [
     { min: 0, max: 5, rate: 0.00 },
@@ -86,6 +99,7 @@ let readRatioValue, writeRatioValue, itemSizeValue, dataUsageValue, utilizationV
 let tableBody, m30Details;
 let atlasSupportToggle, atlasDiscountToggle, atlasContinuousBackupToggle, atlasSnapshotBackupToggle;
 let dynamoSupportToggle, dynamoBackupToggle, dynamoSnapshotBackupToggle, dynamoCrossRegionToggle;
+let dynamoPricingModeSelect, targetUtilizationSlider, targetUtilizationValue;
 
 // Chart initialization
 let costChart = null;
@@ -243,6 +257,10 @@ function calculateActualDataSize(includedStorageGB, usagePercentage) {
 function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utilizationPercentage) {
     const crossRegionReplicas = parseInt(crossRegionSlider.value);
     const transactionPercentage = parseInt(transactionSlider.value);
+    const pricingMode = dynamoPricingModeSelect.value;
+    const pricing = DYNAMO_PRICING_RATES[pricingMode];
+    const targetUtilization = parseInt(targetUtilizationSlider.value) / 100;
+    
     return atlasTiers.map(tier => {
         const actualDataSize = calculateActualDataSize(tier.storage, dataUsagePercentage);
         const effectiveOps = tier.ops * (utilizationPercentage / 100);
@@ -265,11 +283,62 @@ function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utiliz
         const finalRRUs = adjustedRRUs;  // Reads don't amplify
         const finalWRUs = adjustedWRUs * crossRegionWriteMultiplier;
 
-        const totalRrus = finalRRUs * SECONDS_PER_MONTH / 1000000;
-        const totalWrus = finalWRUs * SECONDS_PER_MONTH / 1000000;
+        let readCost, writeCost, provisionedRRUs, provisionedWRUs, bufferMultiplier;
 
-        const readCost = totalRrus * DYNAMO_RRU_PRICE;
-        const writeCost = totalWrus * DYNAMO_WRU_PRICE;
+        if (pricingMode === 'on-demand') {
+            // ON-DEMAND: Pay for actual operations used
+            const actualMonthlyReads = finalRRUs * SECONDS_PER_MONTH;
+            const actualMonthlyWrites = finalWRUs * SECONDS_PER_MONTH;
+            
+            readCost = (actualMonthlyReads / 1000000) * pricing.read_rate_per_million;
+            writeCost = (actualMonthlyWrites / 1000000) * pricing.write_rate_per_million;
+            
+            // For display purposes (no actual provisioning in on-demand)
+            provisionedRRUs = finalRRUs;
+            provisionedWRUs = finalWRUs;
+            bufferMultiplier = 1.0; // No buffer needed for on-demand
+        } else {
+            // PROVISIONED/RESERVED: Pay for capacity reserved
+            bufferMultiplier = 1;
+            
+            // Only apply buffer for provisioned/reserved modes
+            if (targetUtilization && targetUtilization > 0 && targetUtilization <= 1) {
+                bufferMultiplier = 1 / targetUtilization;
+            } else {
+                console.warn('Invalid targetUtilization, using default 70%:', targetUtilization);
+                bufferMultiplier = 1 / 0.70; // Default to 70% if invalid
+            }
+            
+            provisionedRRUs = finalRRUs * bufferMultiplier;
+            provisionedWRUs = finalWRUs * bufferMultiplier;
+            
+            const hoursPerMonth = 30 * 24; // 720 hours
+            
+            // Check if pricing rates exist for the current mode
+            if (!pricing.rcu_hourly_rate || !pricing.wcu_hourly_rate) {
+                console.error('Missing hourly pricing rates for mode:', pricingMode, pricing);
+                readCost = 0;
+                writeCost = 0;
+            } else {
+                readCost = provisionedRRUs * pricing.rcu_hourly_rate * hoursPerMonth;
+                writeCost = provisionedWRUs * pricing.wcu_hourly_rate * hoursPerMonth;
+            }
+        }
+
+        // Validate costs before proceeding
+        if (isNaN(readCost) || isNaN(writeCost)) {
+            console.error('NaN detected in costs:', {
+                readCost,
+                writeCost,
+                pricingMode,
+                finalRRUs,
+                finalWRUs,
+                targetUtilization,
+                pricing
+            });
+            readCost = readCost || 0;
+            writeCost = writeCost || 0;
+        }
 
         const billableStorage = Math.max(0, actualDataSize - DYNAMO_FREE_STORAGE);
         const storageCost = billableStorage * DYNAMO_STORAGE_PRICE;
@@ -293,15 +362,26 @@ function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utiliz
             atlasTotalPrice: Math.round(atlasTotalCost),
             dynamoBasePrice: Math.round(dynamoBaseCost),
             dynamoTotalPrice: Math.round(dynamoTotalCost),
-            costRatio: Math.round(dynamoTotalCost / atlasTotalCost * 10) / 10,
+            costRatio: atlasTotalCost > 0 ? Math.round(dynamoTotalCost / atlasTotalCost * 10) / 10 : 0,
             includedStorage: tier.storage,
             actualDataSize: Math.round(actualDataSize * 10) / 10,
             effectiveOps: Math.round(effectiveOps),
+            pricingMode: pricingMode,
+            targetUtilization: targetUtilization,
             details: {
                 readCost: Math.round(readCost),
                 writeCost: Math.round(writeCost),
                 storageCost: Math.round(storageCost),
                 dynamoSupportCost: Math.round(supportCost),
+                provisionedRRUs: Math.round(provisionedRRUs),
+                provisionedWRUs: Math.round(provisionedWRUs),
+                actualRRUs: Math.round(finalRRUs),
+                actualWRUs: Math.round(finalWRUs),
+                bufferMultiplier: bufferMultiplier,
+                pricingDescription: pricing.description,
+                // Calculate actual monthly operations for display
+                monthlyReads: Math.round(finalRRUs * SECONDS_PER_MONTH / 1000000), // in millions
+                monthlyWrites: Math.round(finalWRUs * SECONDS_PER_MONTH / 1000000), // in millions
                 ...Object.fromEntries(
                     Object.entries(backupCosts).map(([key, value]) =>
                         [key, typeof value === 'number' ? Math.round(value) : value]
@@ -330,6 +410,9 @@ function updateChart(comparisonData) {
     const atlasData = comparisonData.slice(0, visibleTiers).map(item => item.atlasTotalPrice);
     const dynamoData = comparisonData.slice(0, visibleTiers).map(item => item.dynamoTotalPrice);
 
+    const pricingMode = comparisonData[0]?.pricingMode || 'provisioned';
+    const pricingDescription = DYNAMO_PRICING_RATES[pricingMode]?.description || '';
+
     if (costChart) {
         costChart.destroy();
     }
@@ -347,7 +430,7 @@ function updateChart(comparisonData) {
                     borderWidth: 1
                 },
                 {
-                    label: 'Amazon DynamoDB' + (utilizationSlider.value < 100 ? ' (' + utilizationSlider.value + '% utilization)' : ''),
+                    label: 'DynamoDB (' + pricingMode.replace('-', ' ') + ')',
                     data: dynamoData,
                     backgroundColor: 'rgba(66, 133, 244, 0.7)',
                     borderColor: 'rgba(66, 133, 244, 1)',
@@ -394,10 +477,10 @@ function updateTable(comparisonData) {
             <td class="text-right">${atlasTiers[index].ops} / ${item.effectiveOps}</td>
             <td class="text-right">${item.includedStorage} GB</td>
             <td class="text-right">${item.actualDataSize} GB</td>
-            <td class="text-right">$${item.atlasTotalPrice.toLocaleString()}${atlasDiscountToggle.checked ? ' <span class="discount-badge">-17%</span>' : ''}</td>
-            <td class="text-right">$${item.dynamoTotalPrice.toLocaleString()}</td>
-            <td class="text-right">$${yearlyAtlasCost.toLocaleString()}${atlasDiscountToggle.checked ? ' <span class="discount-badge">-17%</span>' : ''}</td>
-            <td class="text-right">$${yearlyDynamoCost.toLocaleString()}</td>
+            <td class="text-right">${item.atlasTotalPrice.toLocaleString()}${atlasDiscountToggle.checked ? ' <span class="discount-badge">-17%</span>' : ''}</td>
+            <td class="text-right">${item.dynamoTotalPrice.toLocaleString()}</td>
+            <td class="text-right">${yearlyAtlasCost.toLocaleString()}${atlasDiscountToggle.checked ? ' <span class="discount-badge">-17%</span>' : ''}</td>
+            <td class="text-right">${yearlyDynamoCost.toLocaleString()}</td>
             <td class="text-right">${item.costRatio}x</td>
         `;
 
@@ -409,6 +492,8 @@ function updateTable(comparisonData) {
     const backupDetails = m30.details;
     const crossRegionReplicas = parseInt(crossRegionSlider.value);
     const transactionPercentage = parseInt(transactionSlider.value);
+    const pricingMode = m30.pricingMode;
+    const pricing = DYNAMO_PRICING_RATES[pricingMode];
 
     m30Details.innerHTML = `
 <h3>Detailed Cost Breakdown for M30 Tier (${m30.actualDataSize}GB actual data, ${utilizationSlider.value}% utilization)</h3>
@@ -425,8 +510,12 @@ function updateTable(comparisonData) {
     </div>
     
     <div style="flex: 1; min-width: 300px;">
-        <h4>DynamoDB Costs</h4>
+        <h4>DynamoDB Costs (${pricingMode.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())})</h4>
+        <p><em>Pricing Mode: ${pricing.description}</em></p>
         <p>Actual Operations: ${m30.effectiveOps}/sec (${utilizationSlider.value}% of ${atlasTiers[2].ops}/sec)</p>
+        ${pricingMode !== 'on-demand' ? `<p>Capacity Buffer: ${backupDetails.bufferMultiplier.toFixed(2)}x multiplier (auto-scaling overhead)</p>` : ''}
+        <p>Required Capacity: ${backupDetails.actualRRUs} RCUs/sec, ${backupDetails.actualWRUs} WCUs/sec</p>
+        ${pricingMode !== 'on-demand' ? `<p>Provisioned Capacity: ${backupDetails.provisionedRRUs} RCUs/sec, ${backupDetails.provisionedWRUs} WCUs/sec</p>` : ''}
         ${transactionPercentage > 0 ? `<p><em>ACID Transactions: +${transactionPercentage}% operational overhead</em></p>` : ''}
         ${crossRegionReplicas > 0 ? `<p><em>Cross-Region: ${crossRegionReplicas} additional region(s) = ${crossRegionReplicas + 1}x write amplification</em></p>` : ''}
         <p>Read Operations: $${backupDetails.readCost}/month ($${(backupDetails.readCost * 12).toLocaleString()}/year)</p>
@@ -451,6 +540,7 @@ function updateUI() {
     const utilization = parseInt(utilizationSlider.value);
     const crossRegion = parseInt(crossRegionSlider.value);
     const transaction = parseInt(transactionSlider.value);
+    const targetUtilization = parseInt(targetUtilizationSlider.value);
 
     readRatioValue.textContent = readRatio;
     writeRatioValue.textContent = 100 - readRatio;
@@ -459,6 +549,16 @@ function updateUI() {
     utilizationValue.textContent = utilization;
     crossRegionValue.textContent = crossRegion;
     transactionValue.textContent = transaction;
+    targetUtilizationValue.textContent = targetUtilization;
+
+    // Show/hide target utilization slider based on pricing mode
+    const pricingMode = dynamoPricingModeSelect.value;
+    const targetUtilizationContainer = document.getElementById('targetUtilizationContainer');
+    if (pricingMode === 'on-demand') {
+        targetUtilizationContainer.style.display = 'none';
+    } else {
+        targetUtilizationContainer.style.display = 'block';
+    }
 
     const comparisonData = calculateDynamoCosts(readRatio, itemSize, dataUsage, utilization);
     updateChart(comparisonData);
@@ -492,6 +592,9 @@ function initializeApp() {
     transactionSlider = document.getElementById('transactionSlider');
     crossRegionValue = document.getElementById('crossRegionValue');
     transactionValue = document.getElementById('transactionValue');
+    dynamoPricingModeSelect = document.getElementById('dynamoPricingMode');
+    targetUtilizationSlider = document.getElementById('targetUtilizationSlider');
+    targetUtilizationValue = document.getElementById('targetUtilizationValue');
 
     // Event listeners
     readRatioSlider.addEventListener('input', updateUI);
@@ -507,6 +610,8 @@ function initializeApp() {
     dynamoSnapshotBackupToggle.addEventListener('change', updateUI);
     crossRegionSlider.addEventListener('input', updateUI);
     transactionSlider.addEventListener('input', updateUI);
+    dynamoPricingModeSelect.addEventListener('change', updateUI);
+    targetUtilizationSlider.addEventListener('input', updateUI);
 
     if (dynamoCrossRegionToggle) {
         dynamoCrossRegionToggle.addEventListener('change', updateUI);

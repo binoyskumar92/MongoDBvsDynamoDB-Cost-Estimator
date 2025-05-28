@@ -6,9 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MongoDB Atlas vs DynamoDB Cost Comparison</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="logic.js"></script>
     <link rel="stylesheet" href="style.css">
-
 </head>
 
 <body>
@@ -35,7 +33,7 @@
                 <div class="control-group">
                     <label class="control-label">Cluster Utilization: <span id="utilizationValue">50</span>% of peak
                         capacity</label>
-                    <input type="range" id="utilization" min="10" max="100" value="50" style="width: 100%;">
+                    <input type="range" id="utilization" min="1" max="100" value="50" style="width: 100%;">
                 </div>
             </div>
 
@@ -75,6 +73,19 @@
                 <div class="flex-grid-item">
                     <h3>DynamoDB Options</h3>
                     <div class="switch-container">
+                        <label class="control-label">Pricing Mode:</label>
+                        <select id="dynamoPricingMode" style="width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                            <option value="on-demand">On-Demand (Pay-per-request)</option>
+                            <option value="provisioned" selected>Provisioned Capacity</option>
+                            <option value="reserved">Reserved Capacity (1-year)</option>
+                        </select>
+                    </div>
+                    <div class="switch-container" id="targetUtilizationContainer">
+                        <label class="control-label">Auto-Scaling Target: <span id="targetUtilizationValue">70</span>% utilization</label>
+                        <input type="range" id="targetUtilizationSlider" min="50" max="90" value="70" style="width: 100%;">
+                        <small style="color: #666; font-size: 12px;">Higher targets = lower costs but higher throttling risk</small>
+                    </div>
+                    <div class="switch-container">
                         <label class="switch">
                             <input type="checkbox" id="dynamoSupportToggle" checked>
                             <span class="slider"></span>
@@ -107,9 +118,6 @@
                         <input type="range" id="transactionSlider" min="0" max="100" value="0" style="width: 100%;">
                     </div>
                 </div>
-
-                <!-- Updated Key Insights section with more comprehensive comparison -->
-
             </div>
         </div>
 
@@ -213,28 +221,35 @@
                     Writes per second: 1,400 × 30% = 420 writes/sec<br>
                     <br>
                     <u>Capacity units needed (2KB items):</u><br>
-                    &nbsp;&nbsp;- RRUs per read: ceil(2KB / 4KB) = 1 RRU<br>
-                    &nbsp;&nbsp;- WRUs per write: ceil(2KB / 1KB) = 2 WRUs<br>
-                    &nbsp;&nbsp;- Base RRUs/sec: 980 × 1 = 980 RRUs/sec<br>
-                    &nbsp;&nbsp;- Base WRUs/sec: 420 × 2 = 840 WRUs/sec<br>
+                    &nbsp;&nbsp;- RCUs per read: ceil(2KB / 4KB) = 1 RCU<br>
+                    &nbsp;&nbsp;- WCUs per write: ceil(2KB / 1KB) = 2 WCUs<br>
+                    &nbsp;&nbsp;- Base RCUs/sec: 980 × 1 = 980 RCUs/sec<br>
+                    &nbsp;&nbsp;- Base WCUs/sec: 420 × 2 = 840 WCUs/sec<br>
                     <br>
                     <u>Apply transaction multiplier (0% transactions = no change):</u><br>
                     &nbsp;&nbsp;- Transaction multiplier: 1 + (0% / 100) = 1.0<br>
-                    &nbsp;&nbsp;- Adjusted RRUs/sec: 980 × 1.0 = 980 RRUs/sec<br>
-                    &nbsp;&nbsp;- Adjusted WRUs/sec: 840 × 1.0 = 840 WRUs/sec<br>
+                    &nbsp;&nbsp;- Adjusted RCUs/sec: 980 × 1.0 = 980 RCUs/sec<br>
+                    &nbsp;&nbsp;- Adjusted WCUs/sec: 840 × 1.0 = 840 WCUs/sec<br>
                     <br>
                     <u>Apply cross-region multiplier (1 additional region):</u><br>
                     &nbsp;&nbsp;- Cross-region write multiplier: 1 + 1 = 2.0<br>
-                    &nbsp;&nbsp;- Final RRUs/sec: 980 (reads don't amplify)<br>
-                    &nbsp;&nbsp;- Final WRUs/sec: 840 × 2.0 = 1,680 WRUs/sec<br>
+                    &nbsp;&nbsp;- Final RCUs/sec: 980 (reads don't amplify)<br>
+                    &nbsp;&nbsp;- Final WCUs/sec: 840 × 2.0 = 1,680 WCUs/sec<br>
                     <br>
-                    <u>Monthly costs:</u><br>
-                    &nbsp;&nbsp;- Monthly RRUs: 980 × 2,592,000 sec ÷ 1,000,000 = 2,540 million RRUs<br>
-                    &nbsp;&nbsp;- Monthly WRUs: 1,680 × 2,592,000 sec ÷ 1,000,000 = 4,355 million WRUs<br>
-                    &nbsp;&nbsp;- Read cost: 2,540 × $0.125 = $317.50/month<br>
-                    &nbsp;&nbsp;- Write cost: 4,355 × $0.625 = $2,721.88/month<br>
-                    &nbsp;&nbsp;- Storage cost: max(0, 28GB - 25GB) × $0.25 = $0.75/month<br>
-                    &nbsp;&nbsp;- Base operations cost: <strong>$3,040.13/month</strong>
+                    <u>DynamoDB Pricing depends on mode:</u><br>
+                    <strong>ON-DEMAND MODE:</strong><br>
+                    &nbsp;&nbsp;- Monthly reads: 980 × 2,592,000 sec ÷ 1,000,000 = 2,540 million reads<br>
+                    &nbsp;&nbsp;- Monthly writes: 1,680 × 2,592,000 sec ÷ 1,000,000 = 4,355 million writes<br>
+                    &nbsp;&nbsp;- Read cost: 2,540 × $0.125 = $317/month<br>
+                    &nbsp;&nbsp;- Write cost: 4,355 × $0.625 = $2,722/month<br>
+                    <br>
+                    <strong>PROVISIONED MODE (70% target utilization):</strong><br>
+                    &nbsp;&nbsp;- Required capacity: 980 RCUs, 1,680 WCUs<br>
+                    &nbsp;&nbsp;- Buffer multiplier: 1 ÷ 0.70 = 1.43x<br>
+                    &nbsp;&nbsp;- Provisioned capacity: 1,401 RCUs, 2,402 WCUs<br>
+                    &nbsp;&nbsp;- Read cost: 1,401 × $0.00013 × 720 hrs = $131/month<br>
+                    &nbsp;&nbsp;- Write cost: 2,402 × $0.00065 × 720 hrs = $1,124/month<br>
+                    &nbsp;&nbsp;- <strong>Provisioned operations cost: $1,255/month</strong>
                 </div>
 
                 <div class="math-step">
@@ -253,16 +268,26 @@
 
                 <div class="math-step">
                     <strong>Step 8: Calculate DynamoDB Support Cost</strong><br>
-                    Base + backup cost: $1,678.88 + $65.75 = $1,744.63/month<br>
-                    AWS Business Support (10% on first $10K): $174.46/month ($2,093.52/year)<br>
-                    <strong>Total DynamoDB cost: $1,744.63 + $174.46 = $1,919.09/month ($23,028.08/year)</strong>
+                    <strong>ON-DEMAND EXAMPLE:</strong><br>
+                    Base + backup cost: $3,040 + $65.75 = $3,105.75/month<br>
+                    AWS Business Support (10% on first $10K): $310.58/month<br>
+                    <strong>Total DynamoDB On-Demand: $3,416.33/month</strong><br>
+                    <br>
+                    <strong>PROVISIONED EXAMPLE:</strong><br>
+                    Base + backup cost: $1,255 + $65.75 = $1,320.75/month<br>
+                    AWS Business Support (10% on first $10K): $132.08/month<br>
+                    <strong>Total DynamoDB Provisioned: $1,452.83/month</strong>
                 </div>
 
                 <div class="math-result">
                     <strong>Final Comparison:</strong><br>
                     MongoDB Atlas total: $622.05/month ($7,464.60/year) (with discount)<br>
-                    DynamoDB total: $1,919.09/month ($23,028.08/year)<br>
-                    <strong>Cost ratio:</strong> $1,919.09 ÷ $622.05 = 3.1x more expensive than Atlas
+                    DynamoDB On-Demand: $3,416.33/month ($40,995.96/year)<br>
+                    DynamoDB Provisioned: $1,452.83/month ($17,433.96/year)<br>
+                    <br>
+                    <strong>Cost ratios:</strong><br>
+                    On-Demand: $3,416 ÷ $622 = 5.5x more expensive than Atlas<br>
+                    Provisioned: $1,453 ÷ $622 = 2.3x more expensive than Atlas
                 </div>
 
                 <div class="math-step" style="margin-top: 20px;">
@@ -274,25 +299,27 @@
                 </div>
             </div>
         </div>
+
         <div class="card">
             <h2>Key Insights</h2>
             <ul>
                 <li>MongoDB Atlas has a fixed monthly cost regardless of actual utilization.</li>
                 <li>DynamoDB costs scale linearly with operation volume and actual utilization.</li>
+                <li><strong>DynamoDB pricing varies dramatically based on pricing mode and target utilization:</strong>
+                    <ul>
+                        <li><strong>On-Demand:</strong> Most expensive per operation but instant scaling with no capacity planning</li>
+                        <li><strong>Provisioned:</strong> 3.5x cheaper than on-demand but requires auto-scaling buffer (typically 43% overhead)</li>
+                        <li><strong>Reserved:</strong> Up to 54% additional savings with 1-year commitment but same buffer requirements</li>
+                    </ul>
+                </li>
                 <li>Most real-world workloads run at 30-70% average utilization of their peak capacity.</li>
-                <li>Write operations account for most of DynamoDB costs (~75-80%) because they are 5x more
-                    expensive than reads.</li>
-                <li>AWS Business Support adds a tiered percentage cost based on your monthly AWS bill (10% for
-                    first $10K, 7% for $10K-$80K, etc.) with a $100 minimum.</li>
-                <li>Atlas Support adds a percentage premium to the base cluster and backup costs (70% standard,
-                    37% with discount).</li>
+                <li>Write operations account for most of DynamoDB costs (~75-80%) because they are 5x more expensive than reads.</li>
+                <li>AWS Business Support adds a tiered percentage cost based on your monthly AWS bill (10% for first $10K, 7% for $10K-$80K, etc.) with a $100 minimum.</li>
+                <li>Atlas Support adds a percentage premium to the base cluster and backup costs (70% standard, 37% with discount).</li>
                 <li>Enterprise discounts of 17% can significantly reduce Atlas costs for large deployments.</li>
-                <li>Cross-region replication for DynamoDB includes additional storage costs and data transfer
-                    charges ($0.09/GB).</li>
-                <li>Both services use similar backup retention policies (weekly/monthly/yearly) for fair
-                    comparison.</li>
-                <li>DynamoDB becomes cost-effective at lower utilization levels (around 10-15% of equivalent
-                    Atlas tier capacity).</li>
+                <li>Cross-region replication for DynamoDB includes additional storage costs and data transfer charges ($0.09/GB).</li>
+                <li>Both services use similar backup retention policies (weekly/monthly/yearly) for fair comparison.</li>
+                <li><strong>DynamoDB auto-scaling target utilization directly affects costs: lower targets = higher costs but safer performance.</strong></li>
             </ul>
 
             <div class="flex-grid">
@@ -304,6 +331,7 @@
                         <li>You need complex query capabilities</li>
                         <li>Your document size varies significantly</li>
                         <li>You prefer predictable monthly costs</li>
+                        <li>You want to avoid capacity planning complexity</li>
                     </ul>
                 </div>
 
@@ -314,15 +342,23 @@
                         <li>You have low utilization (<15% of equivalent Atlas tier)</li>
                         <li>Your access patterns are simple (key-value lookups)</li>
                         <li>You need serverless, automatic scaling</li>
-                        <li>You prefer pay-per-use pricing</li>
+                        <li>You can commit to reserved capacity (1-3 years)</li>
+                        <li>You have expertise to optimize capacity management</li>
                     </ul>
                 </div>
+            </div>
+
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                <h4>💡 DynamoDB Pricing Guide:</h4>
+                <p><strong>On-Demand:</strong> Simplest option with instant scaling. Pay only for actual requests but at highest per-operation rates.</p>
+                <p><strong>Provisioned:</strong> Lower rates but requires capacity planning. Auto-scaling target affects costs significantly (70% = 1.43x buffer).</p>
+                <p><strong>Reserved:</strong> Lowest rates with 1-year commitment. Same capacity planning complexity as provisioned.</p>
+                <p><strong>Target Utilization:</strong> Lower targets (50-60%) = higher costs but safer performance. Higher targets (80-90%) = lower costs but throttling risk.</p>
             </div>
         </div>
     </div>
 
     <script src="logic.js"></script>
-
 </body>
 
 </html>
