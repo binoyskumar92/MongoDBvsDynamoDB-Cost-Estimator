@@ -1,17 +1,17 @@
 // Atlas tier specifications with conservative operations estimates
 const atlasTiers = [
-    { tier: "M10", ram: 4, vcpu: 2, storage: 10, price: 58, ops: 700 },
-    { tier: "M20", ram: 8, vcpu: 4, storage: 20, price: 160, ops: 1400 },
-    { tier: "M30", ram: 16, vcpu: 8, storage: 40, price: 394, ops: 2800 },
-    { tier: "M40", ram: 32, vcpu: 12, storage: 80, price: 759, ops: 4200 },
-    { tier: "M50", ram: 64, vcpu: 16, storage: 160, price: 1460, ops: 5600 },
-    { tier: "M60", ram: 128, vcpu: 20, storage: 320, price: 2880, ops: 7000 },
-    { tier: "M80", ram: 192, vcpu: 24, storage: 500, price: 3840, ops: 8400 },
-    { tier: "M140", ram: 192, vcpu: 48, storage: 1000, price: 6720, ops: 16800 },
-    { tier: "M200", ram: 384, vcpu: 48, storage: 750, price: 9600, ops: 16800 },
-    { tier: "M300", ram: 768, vcpu: 96, storage: 1500, price: 19200, ops: 33600 },
-    { tier: "M400", ram: 488, vcpu: 64, storage: 3000, price: 22400, ops: 22400 },
-    { tier: "M700", ram: 768, vcpu: 96, storage: 4000, price: 33260, ops: 33600 }
+  { tier: "M10",  ram: 2,   vcpu: 2,  storage: 10,   price: 58.40,  ops: 700 },
+  { tier: "M20",  ram: 4,   vcpu: 2,  storage: 20,   price: 146.00, ops: 1400 },
+  { tier: "M30",  ram: 8,   vcpu: 2,  storage: 40,   price: 394.20, ops: 2800 },
+  { tier: "M40",  ram: 16,  vcpu: 4,  storage: 80,   price: 759.20, ops: 4200 },
+  { tier: "M50",  ram: 32,  vcpu: 8,  storage: 160,  price: 1460.00, ops: 5600 },
+  { tier: "M60",  ram: 64,  vcpu: 16, storage: 320,  price: 2883.50, ops: 7000 },
+  { tier: "M80",  ram: 128, vcpu: 32, storage: 750,  price: 5329.00, ops: 8400 },
+  { tier: "M140", ram: 192, vcpu: 48, storage: 1000, price: 8022.70, ops: 16800 },
+  { tier: "M200", ram: 256, vcpu: 64, storage: 1500, price: 10650.70, ops: 16800 },
+  { tier: "M300", ram: 384, vcpu: 96, storage: 2000, price: 15950.50, ops: 33600 },
+  { tier: "M400", ram: 488, vcpu: 64, storage: 3000, price: 16352.00, ops: 22400 },
+  { tier: "M700", ram: 768, vcpu: 96, storage: 4000, price: 24279.80, ops: 33600 }
 ];
 
 // DynamoDB pricing rates (corrected structure and rates)
@@ -95,6 +95,8 @@ const AWS_BUSINESS_SUPPORT_TIERS = [
 // DOM elements - will be initialized when DOM loads
 let readRatioSlider, itemSizeSlider, dataUsageSlider, utilizationSlider;
 let crossRegionSlider, transactionSlider, crossRegionValue, transactionValue;
+let gsiCountSlider, gsiReadRatioSlider, gsiWriteRatioSlider;
+let gsiCountValue, gsiReadRatioValue, gsiWriteRatioValue;
 let readRatioValue, writeRatioValue, itemSizeValue, dataUsageValue, utilizationValue;
 let tableBody, m30Details;
 let atlasSupportToggle, atlasDiscountToggle, atlasContinuousBackupToggle, atlasSnapshotBackupToggle;
@@ -103,6 +105,76 @@ let dynamoPricingModeSelect, targetUtilizationSlider, targetUtilizationValue;
 
 // Chart initialization
 let costChart = null;
+
+// Calculate DynamoDB GSI costs
+function calculateGSICosts(finalRRUs, finalWRUs, pricingMode, pricing, targetUtilization) {
+    const gsiCount = parseInt(gsiCountSlider.value);
+    if (gsiCount === 0) {
+        return { 
+            cost: 0, 
+            details: {
+                gsiCount: 0,
+                totalGSIRCUs: 0,
+                totalGSIWCUs: 0,
+                gsiReadCost: 0,
+                gsiWriteCost: 0,
+                totalGSICost: 0
+            }
+        };
+    }
+    
+    const gsiReadRatio = parseInt(gsiReadRatioSlider.value) / 100;
+    const gsiWriteRatio = parseInt(gsiWriteRatioSlider.value) / 100;
+    
+    // Calculate capacity needed per GSI
+    const gsiRCUsPerGSI = finalRRUs * gsiReadRatio;
+    const gsiWCUsPerGSI = finalWRUs * gsiWriteRatio;
+    
+    // Total capacity for all GSIs
+    const totalGSIRCUs = gsiRCUsPerGSI * gsiCount;
+    const totalGSIWCUs = gsiWCUsPerGSI * gsiCount;
+    
+    let gsiReadCost = 0;
+    let gsiWriteCost = 0;
+    
+    if (pricingMode === 'on-demand') {
+        // ON-DEMAND: Pay for actual operations used
+        const monthlyGSIReads = totalGSIRCUs * SECONDS_PER_MONTH;
+        const monthlyGSIWrites = totalGSIWCUs * SECONDS_PER_MONTH;
+        
+        gsiReadCost = (monthlyGSIReads / 1000000) * pricing.read_rate_per_million;
+        gsiWriteCost = (monthlyGSIWrites / 1000000) * pricing.write_rate_per_million;
+    } else {
+        // PROVISIONED/RESERVED: Pay for capacity reserved
+        const bufferMultiplier = targetUtilization > 0 ? (1 / targetUtilization) : (1 / 0.70);
+        
+        const provisionedGSIRCUs = totalGSIRCUs * bufferMultiplier;
+        const provisionedGSIWCUs = totalGSIWCUs * bufferMultiplier;
+        
+        const hoursPerMonth = 30 * 24; // 720 hours
+        
+        gsiReadCost = provisionedGSIRCUs * pricing.rcu_hourly_rate * hoursPerMonth;
+        gsiWriteCost = provisionedGSIWCUs * pricing.wcu_hourly_rate * hoursPerMonth;
+    }
+    
+    const totalGSICost = gsiReadCost + gsiWriteCost;
+    
+    return {
+        cost: totalGSICost,
+        details: {
+            gsiCount: gsiCount,
+            gsiReadRatio: gsiReadRatio,
+            gsiWriteRatio: gsiWriteRatio,
+            gsiRCUsPerGSI: Math.round(gsiRCUsPerGSI),
+            gsiWCUsPerGSI: Math.round(gsiWCUsPerGSI),
+            totalGSIRCUs: Math.round(totalGSIRCUs),
+            totalGSIWCUs: Math.round(totalGSIWCUs),
+            gsiReadCost: Math.round(gsiReadCost),
+            gsiWriteCost: Math.round(gsiWriteCost),
+            totalGSICost: Math.round(totalGSICost)
+        }
+    };
+}
 
 // Calculate DynamoDB backup costs using realistic storage multipliers
 function calculateDynamoBackupCosts(actualDataSize) {
@@ -348,8 +420,11 @@ function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utiliz
         // Calculate backup costs
         const backupCosts = calculateDynamoBackupCosts(actualDataSize);
 
-        // Add backup costs to base cost for support calculation
-        const costForSupportCalculation = dynamoBaseCost + backupCosts.totalBackupCost;
+        // Calculate GSI costs
+        const gsiCosts = calculateGSICosts(finalRRUs, finalWRUs, pricingMode, pricing, targetUtilization);
+
+        // Add backup and GSI costs to base cost for support calculation
+        const costForSupportCalculation = dynamoBaseCost + backupCosts.totalBackupCost + gsiCosts.cost;
         const supportCost = calculateAWSBusinessSupportCost(costForSupportCalculation);
 
         const dynamoTotalCost = costForSupportCalculation + supportCost;
@@ -384,6 +459,11 @@ function calculateDynamoCosts(readRatio, itemSizeKB, dataUsagePercentage, utiliz
                 monthlyWrites: Math.round(finalWRUs * SECONDS_PER_MONTH / 1000000), // in millions
                 ...Object.fromEntries(
                     Object.entries(backupCosts).map(([key, value]) =>
+                        [key, typeof value === 'number' ? Math.round(value) : value]
+                    )
+                ),
+                ...Object.fromEntries(
+                    Object.entries(gsiCosts.details).map(([key, value]) =>
                         [key, typeof value === 'number' ? Math.round(value) : value]
                     )
                 ),
@@ -504,9 +584,9 @@ function updateTable(comparisonData) {
         <p>Base Cluster Cost: $${m30.atlasBasePrice}/month ($${(m30.atlasBasePrice * 12).toLocaleString()}/year)</p>
         <p>Continuous Backup (tiered pricing): $${backupDetails.atlasContinuousBackupCost}/month ($${(backupDetails.atlasContinuousBackupCost * 12).toLocaleString()}/year)</p>
         <p>Snapshot Backup (weekly/monthly/yearly): $${backupDetails.atlasSnapshotBackupCost}/month ($${(backupDetails.atlasSnapshotBackupCost * 12).toLocaleString()}/year)</p>
-        <p>Support (${atlasDiscountToggle.checked ? '37' : '70'}%): $${backupDetails.atlasSupportCost}/month ($${(backupDetails.atlasSupportCost * 12).toLocaleString()}/year)</p>
-        ${atlasDiscountToggle.checked ? `<p>Enterprise Discount (17%): -$${backupDetails.atlasDiscountAmount}/month (-$${(backupDetails.atlasDiscountAmount * 12).toLocaleString()}/year)</p>` : ''}
-        <p><strong>Total Atlas Cost: $${m30.atlasTotalPrice}/month ($${(m30.atlasTotalPrice * 12).toLocaleString()}/year)</strong></p>
+        <p>Support (${atlasDiscountToggle.checked ? '37' : '70'}%): ${backupDetails.atlasSupportCost}/month (${(backupDetails.atlasSupportCost * 12).toLocaleString()}/year)</p>
+        ${atlasDiscountToggle.checked ? `<p>Enterprise Discount (17%): -${backupDetails.atlasDiscountAmount}/month (-${(backupDetails.atlasDiscountAmount * 12).toLocaleString()}/year)</p>` : ''}
+        <p><strong>Total Atlas Cost: ${m30.atlasTotalPrice}/month (${(m30.atlasTotalPrice * 12).toLocaleString()}/year)</strong></p>
     </div>
     
     <div style="flex: 1; min-width: 300px;">
@@ -518,13 +598,20 @@ function updateTable(comparisonData) {
         ${pricingMode !== 'on-demand' ? `<p>Provisioned Capacity: ${backupDetails.provisionedRRUs} RCUs/sec, ${backupDetails.provisionedWRUs} WCUs/sec</p>` : ''}
         ${transactionPercentage > 0 ? `<p><em>ACID Transactions: +${transactionPercentage}% operational overhead</em></p>` : ''}
         ${crossRegionReplicas > 0 ? `<p><em>Cross-Region: ${crossRegionReplicas} additional region(s) = ${crossRegionReplicas + 1}x write amplification</em></p>` : ''}
-        <p>Read Operations: $${backupDetails.readCost}/month ($${(backupDetails.readCost * 12).toLocaleString()}/year)</p>
-        <p>Write Operations: $${backupDetails.writeCost}/month ($${(backupDetails.writeCost * 12).toLocaleString()}/year)</p>
-        <p>Storage: $${backupDetails.storageCost}/month ($${(backupDetails.storageCost * 12).toLocaleString()}/year)</p>
-        <p>Business Support (Tiered): $${backupDetails.dynamoSupportCost}/month ($${(backupDetails.dynamoSupportCost * 12).toLocaleString()}/year)</p>
-        <p>Point-in-Time Recovery (PITR): $${backupDetails.pitrCost}/month ($${(backupDetails.pitrCost * 12).toLocaleString()}/year)</p>
-        <p>On-Demand Backup (${backupDetails.totalBackupStorage}GB storage): $${backupDetails.onDemandBackupCost}/month ($${(backupDetails.onDemandBackupCost * 12).toLocaleString()}/year)</p>
-        <p><strong>Total DynamoDB Cost: $${m30.dynamoTotalPrice}/month ($${(m30.dynamoTotalPrice * 12).toLocaleString()}/year)</strong></p>
+        <p>Read Operations: ${backupDetails.readCost}/month (${(backupDetails.readCost * 12).toLocaleString()}/year)</p>
+        <p>Write Operations: ${backupDetails.writeCost}/month (${(backupDetails.writeCost * 12).toLocaleString()}/year)</p>
+        <p>Storage: ${backupDetails.storageCost}/month (${(backupDetails.storageCost * 12).toLocaleString()}/year)</p>
+        ${backupDetails.gsiCount > 0 ? `
+        <p><strong>Global Secondary Indexes (${backupDetails.gsiCount} GSIs):</strong></p>
+        <p>&nbsp;&nbsp;- GSI Read Operations: ${backupDetails.gsiReadCost}/month (${(backupDetails.gsiReadCost * 12).toLocaleString()}/year)</p>
+        <p>&nbsp;&nbsp;- GSI Write Operations: ${backupDetails.gsiWriteCost}/month (${(backupDetails.gsiWriteCost * 12).toLocaleString()}/year)</p>
+        <p>&nbsp;&nbsp;- Total GSI Capacity: ${backupDetails.totalGSIRCUs} RCUs/sec, ${backupDetails.totalGSIWCUs} WCUs/sec</p>
+        <p>&nbsp;&nbsp;- GSI Subtotal: ${backupDetails.totalGSICost}/month (${(backupDetails.totalGSICost * 12).toLocaleString()}/year)</p>
+        ` : ''}
+        <p>Business Support (Tiered): ${backupDetails.dynamoSupportCost}/month (${(backupDetails.dynamoSupportCost * 12).toLocaleString()}/year)</p>
+        <p>Point-in-Time Recovery (PITR): ${backupDetails.pitrCost}/month (${(backupDetails.pitrCost * 12).toLocaleString()}/year)</p>
+        <p>On-Demand Backup (${backupDetails.totalBackupStorage}GB storage): ${backupDetails.onDemandBackupCost}/month (${(backupDetails.onDemandBackupCost * 12).toLocaleString()}/year)</p>
+        <p><strong>Total DynamoDB Cost: ${m30.dynamoTotalPrice}/month (${(m30.dynamoTotalPrice * 12).toLocaleString()}/year)</strong></p>
     </div>
 </div>
 
@@ -541,6 +628,9 @@ function updateUI() {
     const crossRegion = parseInt(crossRegionSlider.value);
     const transaction = parseInt(transactionSlider.value);
     const targetUtilization = parseInt(targetUtilizationSlider.value);
+    const gsiCount = parseInt(gsiCountSlider.value);
+    const gsiReadRatio = parseInt(gsiReadRatioSlider.value);
+    const gsiWriteRatio = parseInt(gsiWriteRatioSlider.value);
 
     readRatioValue.textContent = readRatio;
     writeRatioValue.textContent = 100 - readRatio;
@@ -550,6 +640,9 @@ function updateUI() {
     crossRegionValue.textContent = crossRegion;
     transactionValue.textContent = transaction;
     targetUtilizationValue.textContent = targetUtilization;
+    gsiCountValue.textContent = gsiCount;
+    gsiReadRatioValue.textContent = gsiReadRatio;
+    gsiWriteRatioValue.textContent = gsiWriteRatio;
 
     // Show/hide target utilization slider based on pricing mode
     const pricingMode = dynamoPricingModeSelect.value;
@@ -592,6 +685,12 @@ function initializeApp() {
     transactionSlider = document.getElementById('transactionSlider');
     crossRegionValue = document.getElementById('crossRegionValue');
     transactionValue = document.getElementById('transactionValue');
+    gsiCountSlider = document.getElementById('gsiCountSlider');
+    gsiReadRatioSlider = document.getElementById('gsiReadRatioSlider');
+    gsiWriteRatioSlider = document.getElementById('gsiWriteRatioSlider');
+    gsiCountValue = document.getElementById('gsiCountValue');
+    gsiReadRatioValue = document.getElementById('gsiReadRatioValue');
+    gsiWriteRatioValue = document.getElementById('gsiWriteRatioValue');
     dynamoPricingModeSelect = document.getElementById('dynamoPricingMode');
     targetUtilizationSlider = document.getElementById('targetUtilizationSlider');
     targetUtilizationValue = document.getElementById('targetUtilizationValue');
@@ -610,6 +709,9 @@ function initializeApp() {
     dynamoSnapshotBackupToggle.addEventListener('change', updateUI);
     crossRegionSlider.addEventListener('input', updateUI);
     transactionSlider.addEventListener('input', updateUI);
+    gsiCountSlider.addEventListener('input', updateUI);
+    gsiReadRatioSlider.addEventListener('input', updateUI);
+    gsiWriteRatioSlider.addEventListener('input', updateUI);
     dynamoPricingModeSelect.addEventListener('change', updateUI);
     targetUtilizationSlider.addEventListener('input', updateUI);
 
