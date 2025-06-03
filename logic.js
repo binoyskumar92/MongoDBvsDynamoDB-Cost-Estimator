@@ -746,39 +746,34 @@ function updateM30DetailsWithCompression(m30, atlasDetails) {
 
 <div style="display: flex; flex-wrap: wrap; gap: 20px;">
     <div style="flex: 1; min-width: 300px;">
-        <h4>MongoDB Atlas Costs (Official Algorithm)</h4>
-        <p>Base Cluster Cost: ${m30.atlasBasePrice}/month (${(m30.atlasBasePrice * 12).toLocaleString()}/year)</p>
-        <p>Network Overhead (7%): ${atlasDetails.networkCost.toFixed(2)}/month (${(atlasDetails.networkCost * 12).toLocaleString()}/year)</p>
+        <h4>MongoDB Atlas Costs</h4>
+        <p>Base Cluster Cost: $${m30.atlasBasePrice}/month ($${(m30.atlasBasePrice * 12).toLocaleString()}/year)</p>
+        <p>Network Overhead (7%): $${atlasDetails.networkCost.toFixed(2)}/month ($${(atlasDetails.networkCost * 12).toLocaleString()}/year)</p>
         
         <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 15px 0;">
-            <h5>💾 Backup Costs (Official MongoDB Algorithm)</h5>
+            <h5>💾 Backup Costs</h5>
             
-            <p><strong>Continuous Backup:</strong> ${atlasDetails.continuousBackupCost.toFixed(2)}/month</p>
+            <p><strong>Continuous Backup:</strong> $${atlasDetails.continuousBackupCost.toFixed(2)}/month</p>
             <p style="font-size: 12px; color: #666; margin-left: 15px;">
                 • Data churn: ${atlasDetails.monthlyChurnPercent}% monthly<br>
                 • Compressed data: ${atlasDetails.compressedDataSize}GB<br>
                 • Oplog: ${atlasDetails.oplogGBPerHour}GB/hr × 48hrs = ${atlasDetails.totalOplogGB}GB<br>
                 • Total storage: ${atlasDetails.totalContinuousStorageGB}GB<br>
-                • Uses official tiered pricing: $0 (0-5GB), $1.05 (5-100GB), $0.80 (100-250GB), $0.65 (250GB+)
+                • Tiered pricing: $0 (0-5GB), $1.05 (5-100GB), $0.80 (100-250GB), $0.65 (250GB+)
             </p>
             
-            <p><strong>Snapshot Backup:</strong> ${atlasDetails.snapshotBackupCost.toFixed(2)}/month</p>
+            <p><strong>Snapshot Backup:</strong> $${atlasDetails.snapshotBackupCost.toFixed(2)}/month</p>
             <p style="font-size: 12px; color: #666; margin-left: 15px;">
-                • 31 snapshots (MongoDB calculator default)<br>
+                • 31 snapshots assumed<br>
                 • Total storage: ${atlasDetails.totalSnapshotStorageGB}GB<br>
-                • Rate: $0.14/GB/month (single tier pricing)<br>
+                • Rate: $0.14/GB/month<br>
                 • Formula: CompressedSize + (30 × DailyChurn)
             </p>
-            
-            <div style="background: #d4edda; padding: 8px; border-radius: 6px; margin-top: 8px;">
-                <strong>✅ Algorithm Compliance:</strong> Now matches MongoDB's official pricing calculator within 3-7% accuracy.<br>
-                Fixed: Tiered rates, compression factors, and 31-snapshot default.
-            </div>
         </div>
         
-        ${atlasDetails.supportCost > 0 ? `<p>Support (${(atlasDetails.supportRate * 100).toFixed(0)}%): ${atlasDetails.supportCost.toFixed(2)}/month (${(atlasDetails.supportCost * 12).toLocaleString()}/year)</p>` : ''}
-        ${atlasDetails.discountAmount > 0 ? `<p>Enterprise Discount (17%): -${atlasDetails.discountAmount.toFixed(2)}/month (-${(atlasDetails.discountAmount * 12).toLocaleString()}/year)</p>` : ''}
-        <p><strong>Total Atlas Cost: ${m30.atlasTotalPrice}/month (${(m30.atlasTotalPrice * 12).toLocaleString()}/year)</strong></p>
+        ${atlasDetails.supportCost > 0 ? `<p>Support (${(atlasDetails.supportRate * 100).toFixed(0)}%): $${atlasDetails.supportCost.toFixed(2)}/month ($${(atlasDetails.supportCost * 12).toLocaleString()}/year)</p>` : ''}
+        ${atlasDetails.discountAmount > 0 ? `<p>Enterprise Discount (17%): -$${atlasDetails.discountAmount.toFixed(2)}/month (-$${(atlasDetails.discountAmount * 12).toLocaleString()}/year)</p>` : ''}
+        <p><strong>Total Atlas Cost: $${m30.atlasTotalPrice}/month ($${(m30.atlasTotalPrice * 12).toLocaleString()}/year)</strong></p>
     </div>
     
     <div style="flex: 1; min-width: 300px;">
@@ -790,36 +785,35 @@ function updateM30DetailsWithCompression(m30, atlasDetails) {
         ${pricingMode !== 'on-demand' ? `<p>Provisioned Capacity: ${backupDetails.provisionedRRUs} RCUs/sec, ${backupDetails.provisionedWRUs} WCUs/sec</p>` : ''}
         ${transactionPercentage > 0 ? `<p><em>ACID Transactions: +${transactionPercentage}% operational overhead</em></p>` : ''}
         ${crossRegionReplicas > 0 ? `<p><em>Cross-Region: ${crossRegionReplicas} additional region(s) = ${crossRegionReplicas + 1}x write amplification</em></p>` : ''}
-        <p>Read Operations: ${backupDetails.readCost}/month (${(backupDetails.readCost * 12).toLocaleString()}/year)</p>
-        <p>Write Operations: ${backupDetails.writeCost}/month (${(backupDetails.writeCost * 12).toLocaleString()}/year)</p>
-        <p>Storage: ${backupDetails.storageCost}/month (${(backupDetails.storageCost * 12).toLocaleString()}/year)</p>
+        <p>Read Operations: $${backupDetails.readCost}/month ($${(backupDetails.readCost * 12).toLocaleString()}/year)</p>
+        <p>Write Operations: $${backupDetails.writeCost}/month ($${(backupDetails.writeCost * 12).toLocaleString()}/year)</p>
+        <p>Storage: $${backupDetails.storageCost}/month ($${(backupDetails.storageCost * 12).toLocaleString()}/year)</p>
         ${backupDetails.gsiCount > 0 ? `
         <p><strong>Global Secondary Indexes (${backupDetails.gsiCount} GSIs):</strong></p>
-        <p>&nbsp;&nbsp;- GSI Read Operations: ${backupDetails.gsiReadCost}/month (${(backupDetails.gsiReadCost * 12).toLocaleString()}/year)</p>
-        <p>&nbsp;&nbsp;- GSI Write Operations: ${backupDetails.gsiWriteCost}/month (${(backupDetails.gsiWriteCost * 12).toLocaleString()}/year)</p>
+        <p>&nbsp;&nbsp;- GSI Read Operations: $${backupDetails.gsiReadCost}/month ($${(backupDetails.gsiReadCost * 12).toLocaleString()}/year)</p>
+        <p>&nbsp;&nbsp;- GSI Write Operations: $${backupDetails.gsiWriteCost}/month ($${(backupDetails.gsiWriteCost * 12).toLocaleString()}/year)</p>
         <p>&nbsp;&nbsp;- Total GSI Capacity: ${backupDetails.totalGSIRCUs} RCUs/sec, ${backupDetails.totalGSIWCUs} WCUs/sec</p>
-        <p>&nbsp;&nbsp;- GSI Subtotal: ${backupDetails.totalGSICost}/month (${(backupDetails.totalGSICost * 12).toLocaleString()}/year)</p>
+        <p>&nbsp;&nbsp;- GSI Subtotal: $${backupDetails.totalGSICost}/month ($${(backupDetails.totalGSICost * 12).toLocaleString()}/year)</p>
         ` : ''}
-        <p>Business Support (Tiered): ${backupDetails.dynamoSupportCost}/month (${(backupDetails.dynamoSupportCost * 12).toLocaleString()}/year)</p>
-        <p>Point-in-Time Recovery (PITR): ${backupDetails.pitrCost}/month (${(backupDetails.pitrCost * 12).toLocaleString()}/year)</p>
-        <p>On-Demand Backup (${backupDetails.totalBackupStorage}GB storage): ${backupDetails.onDemandBackupCost}/month (${(backupDetails.onDemandBackupCost * 12).toLocaleString()}/year)</p>
-        <p><strong>Total DynamoDB Cost: ${m30.dynamoTotalPrice}/month (${(m30.dynamoTotalPrice * 12).toLocaleString()}/year)</strong></p>
+        <p>Business Support (Tiered): $${backupDetails.dynamoSupportCost}/month ($${(backupDetails.dynamoSupportCost * 12).toLocaleString()}/year)</p>
+        <p>Point-in-Time Recovery (PITR): $${backupDetails.pitrCost}/month ($${(backupDetails.pitrCost * 12).toLocaleString()}/year)</p>
+        <p>On-Demand Backup (${backupDetails.totalBackupStorage}GB storage): $${backupDetails.onDemandBackupCost}/month ($${(backupDetails.onDemandBackupCost * 12).toLocaleString()}/year)</p>
+        <p><strong>Total DynamoDB Cost: $${m30.dynamoTotalPrice}/month ($${(m30.dynamoTotalPrice * 12).toLocaleString()}/year)</strong></p>
     </div>
 </div>
 
-<div style="background: #d1ecf1; padding: 15px; border-radius: 8px; margin-top: 20px; border-left: 4px solid #bee5eb;">
-    <h4>🎯 Implementation Notes:</h4>
+<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 20px; border-left: 4px solid #6c757d;">
+    <h4>📋 Calculation Notes:</h4>
     <ul style="margin: 10px 0;">
-        <li><strong>Official Algorithm:</strong> Implemented MongoDB's exact pricing calculation from their documentation</li>
-        <li><strong>Validated Results:</strong> M30 continuous backup shows 3.5% error vs official calculator</li>
-        <li><strong>Tiered Pricing:</strong> Correctly applies 4-tier pricing structure for continuous backup</li>
-        <li><strong>Compression:</strong> Uses realistic compression ratios (30% for oplog, 40% for snapshots)</li>
-        <li><strong>Fixed Parameters:</strong> Always uses 31 snapshots (matches MongoDB calculator behavior)</li>
+        <li><strong>Atlas Backup:</strong> Uses tiered pricing structure for continuous backup storage</li>
+        <li><strong>Compression:</strong> Applies estimated compression ratios (30% for oplog, 40% for snapshots)</li>
+        <li><strong>DynamoDB Estimates:</strong> Based on standard AWS pricing and typical enterprise usage patterns</li>
+        <li><strong>Support Costs:</strong> Atlas percentage-based, DynamoDB tiered billing structure</li>
+        <li><strong>Assumptions:</strong> This tool provides cost estimates for comparison purposes</li>
     </ul>
-    <p style="margin: 10px 0;"><strong>Accuracy:</strong> Algorithm matches MongoDB's official calculator within 3-7% for most scenarios.</p>
 </div>
 
-<p style="font-weight: 500; margin-top: 10px;">With corrected calculations, DynamoDB is ${m30.costRatio}x ${m30.costRatio >= 1 ? 'more expensive than' : 'cheaper than'} MongoDB Atlas M30.</p>
+<p style="font-weight: 500; margin-top: 10px;">Based on these calculations, DynamoDB is ${m30.costRatio}x ${m30.costRatio >= 1 ? 'more expensive than' : 'cheaper than'} MongoDB Atlas M30 for this workload.</p>
 `;
 }
 
