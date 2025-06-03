@@ -366,6 +366,123 @@ input:checked + .slider:before {
     box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
 }
 
+.atlas-cost-cell {
+    cursor: help;
+    position: relative;
+    transition: background-color 0.2s ease;
+}
+
+.atlas-cost-cell:hover {
+    background-color: #e8f5e8 !important;
+    font-weight: 600;
+}
+
+.atlas-tooltip {
+    position: absolute;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border: 2px solid #28a745;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 280px;
+    font-size: 13px;
+    backdrop-filter: blur(10px);
+}
+
+.tooltip-header {
+    font-weight: 700;
+    font-size: 14px;
+    color: #28a745;
+    margin-bottom: 12px;
+    text-align: center;
+    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 8px;
+}
+
+.tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.tooltip-row:last-child {
+    border-bottom: none;
+}
+
+.tooltip-row span:first-child {
+    color: #495057;
+    font-weight: 500;
+}
+
+.tooltip-row span:last-child {
+    color: #343a40;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+.tooltip-row.discount span:last-child {
+    color: #28a745;
+}
+
+.tooltip-row.total {
+    font-weight: 700;
+    font-size: 14px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 2px solid #28a745;
+}
+
+.tooltip-row.total span {
+    color: #28a745;
+}
+
+.tooltip-divider {
+    height: 1px;
+    background: #dee2e6;
+    margin: 8px 0;
+}
+
+.tooltip-compression {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e9ecef;
+}
+
+.compression-header {
+    font-weight: 600;
+    font-size: 12px;
+    color: #007bff;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.compression-detail {
+    font-size: 11px;
+    color: #6c757d;
+    margin-bottom: 3px;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+.compression-savings {
+    font-size: 11px;
+    color: #28a745;
+    font-weight: 600;
+    margin-top: 6px;
+    padding: 4px 8px;
+    background: rgba(40, 167, 69, 0.1);
+    border-radius: 6px;
+    text-align: center;
+}
+
+/* Ensure tooltip appears above other elements */
+.atlas-tooltip {
+    pointer-events: none; /* Prevents tooltip from interfering with mouse events */
+}
+
 @media (max-width: 768px) {
     .flex-grid {
         grid-template-columns: 1fr;
