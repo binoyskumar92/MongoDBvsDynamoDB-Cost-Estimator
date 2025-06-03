@@ -8,16 +8,15 @@ echo "Starting deployment process..."
 # Function to check if app is already deployed
 check_deployment_status() {
     if [ -d "/var/www/html/app" ] && [ -f "/etc/nginx/conf.d/app.conf" ] && systemctl is-active --quiet nginx; then
-        return 0  # Already deployed
+        return 0 # Already deployed
     else
-        return 1  # Not deployed
+        return 1 # Not deployed
     fi
 }
-
 # Function for initial deployment
 initial_deployment() {
     echo "🚀 Performing initial deployment..."
-    
+
     # Update system packages
     sudo yum update -y
 
@@ -36,11 +35,11 @@ initial_deployment() {
     read username
     echo "Enter password for $username:"
     read -s password
-    echo "$username:$(openssl passwd -apr1 $password)" | sudo tee /etc/nginx/.htpasswd > /dev/null
+    echo "$username:$(openssl passwd -apr1 $password)" | sudo tee /etc/nginx/.htpasswd >/dev/null
 
     # Backup original nginx config and disable default server
     sudo cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup
-    
+
     # Comment out the default server block to avoid conflicts
     sudo sed -i '/server {/,/^    }/s/^/#/' /etc/nginx/nginx.conf
 
@@ -48,7 +47,7 @@ initial_deployment() {
     sudo mkdir -p /etc/nginx/conf.d
 
     # Create Nginx configuration
-    sudo tee /etc/nginx/conf.d/app.conf > /dev/null <<EOF
+    sudo tee /etc/nginx/conf.d/app.conf >/dev/null <<EOF
 server {
     listen 80 default_server;
     server_name _;
@@ -60,14 +59,13 @@ server {
         root /var/www/html/app;
         index index.html;
         
-        # Handle static files with caching
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
+        # Disable all caching
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
         
         # Fallback to index.html for SPA routing
-        try_files \$uri \$uri/ /index.html;
+        try_files $uri $uri/ /index.html;
     }
     
     # Health check endpoint (no auth required)
@@ -85,11 +83,11 @@ EOF
 
     if [ $? -eq 0 ]; then
         echo "Nginx configuration is valid!"
-        
+
         # Start and enable Nginx
         sudo systemctl start nginx
         sudo systemctl enable nginx
-        
+
         echo "✅ Initial deployment infrastructure ready!"
     else
         echo "❌ Nginx configuration failed! Please check the config manually."
@@ -101,54 +99,101 @@ EOF
 update_code() {
     echo "🔄 Updating application code..."
     
+    # Define paths
+    REPO_PATH="/tmp/MongoDBvsDynamoDB-Cost-Estimator"
+    REPO_URL="https://github.com/binoyskumar92/MongoDBvsDynamoDB-Cost-Estimator.git"
+
     # Navigate to temp directory
     cd /tmp
 
-    # Check if repo exists, if not clone it
-    if [ ! -d "MongoDBvsDynamoDB-Cost-Estimator" ]; then
-        echo "📥 Repository not found, cloning..."
-        git clone https://github.com/binoyskumar92/MongoDBvsDynamoDB-Cost-Estimator.git
+    # Clean up any existing problematic repository
+    if [ -d "MongoDBvsDynamoDB-Cost-Estimator" ]; then
+        echo "🧹 Cleaning up existing repository..."
+        sudo rm -rf MongoDBvsDynamoDB-Cost-Estimator
     fi
 
-    # Navigate to repo and pull latest changes
-    cd MongoDBvsDynamoDB-Cost-Estimator
-    echo "📦 Pulling latest changes from Git..."
+    # Clone repository fresh
+    echo "📥 Cloning repository..."
+    git clone "$REPO_URL"
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to clone repository"
+        exit 1
+    fi
+
+    # Fix ownership immediately after clone
+    sudo chown -R ec2-user:ec2-user MongoDBvsDynamoDB-Cost-Estimator
     
-    # Check if there are any changes
-    git fetch
-    LOCAL=$(git rev-parse HEAD)
-    REMOTE=$(git rev-parse @{u})
+    # Add as safe directory for git operations
+    git config --global --add safe.directory "$REPO_PATH" 2>/dev/null
+
+    # Navigate to repository
+    cd "$REPO_PATH"
     
-    if [ "$LOCAL" = "$REMOTE" ]; then
-        echo "📋 No new changes found in repository"
-        echo "🌐 Your app is already up to date!"
-        return 0
+    echo "📦 Repository cloned successfully!"
+    echo "📋 Current files in repository:"
+    ls -la
+    
+    # Verify we're in a git repository
+    if [ ! -d ".git" ]; then
+        echo "❌ Not in a git repository after clone. Something went wrong."
+        exit 1
+    fi
+
+    # Verify required files exist
+    if [ ! -f "index.html" ] || [ ! -f "logic.js" ] || [ ! -f "style.css" ]; then
+        echo "❌ Required files (index.html, logic.js, style.css) not found in repository"
+        echo "Files found:"
+        ls -la *.html *.js *.css 2>/dev/null || echo "No matching files found"
+        exit 1
     fi
     
-    git pull origin main
-
+    # Show what we're about to copy
+    echo "📋 Files to be copied:"
+    ls -la index.html logic.js style.css
+    
     # Create backup of current deployment with timestamp
-    if [ -d "/var/www/html/app" ]; then
+    if [ -d "/var/www/html/app" ] && [ "$(ls -A /var/www/html/app)" ]; then
         BACKUP_DIR="/var/www/html/app.backup.$(date +%Y%m%d-%H%M%S)"
         echo "💾 Creating backup at $BACKUP_DIR"
         sudo cp -r /var/www/html/app "$BACKUP_DIR"
     fi
-
-    # Copy updated files
-    echo "📋 Copying updated files..."
-    sudo cp index.html logic.js style.css /var/www/html/app/
-
-    # Set proper permissions (nginx user on Amazon Linux 2)
+    
+    # Ensure web directory exists
+    sudo mkdir -p /var/www/html/app
+    
+    # Copy updated files with verbose output
+    echo "📋 Copying updated files to web directory..."
+    echo "Current directory: $(pwd)"
+    echo "Copying to: /var/www/html/app/"
+    
+    sudo cp -v index.html logic.js style.css /var/www/html/app/
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Files copied successfully!"
+    else
+        echo "❌ File copy failed!"
+        exit 1
+    fi
+    
+    # Verify files were copied
+    echo "📋 Verifying copied files:"
+    ls -la /var/www/html/app/
+    
+    # Set proper permissions
     sudo chown -R nginx:nginx /var/www/html/app
     sudo chmod -R 755 /var/www/html/app
-
-    # Test nginx config (in case there were any changes)
+    
+    # Test nginx config
     sudo nginx -t
-
+    
     if [ $? -eq 0 ]; then
         # Reload nginx to clear any cached content
         sudo systemctl reload nginx
-        echo "✅ Code updated successfully!"
+        echo "✅ Code updated and deployed successfully!"
+        
+        # Show file timestamps to confirm update
+        echo "📅 Deployed file timestamps:"
+        ls -lt /var/www/html/app/
     else
         echo "⚠️  Nginx config test failed, but files were updated"
     fi
@@ -158,7 +203,7 @@ update_code() {
 show_deployment_info() {
     # Get public IP
     PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "Unable to fetch IP")
-    
+
     echo ""
     echo "🌐 Your app is accessible at: http://$PUBLIC_IP"
     echo "🏥 Health check (no auth): http://$PUBLIC_IP/health"
@@ -181,7 +226,7 @@ else
     echo "🚀 Performing full initial deployment..."
     initial_deployment
     update_code
-    
+
     echo ""
     echo "🔧 IMPORTANT: Make sure your EC2 Security Group allows inbound traffic on port 80 (HTTP)"
     echo ""
