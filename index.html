@@ -68,22 +68,70 @@
                         </label>
                         <span>Include Snapshot Backup(default policy)</span>
                     </div>
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e9ecef;">
+                        <h4 style="margin: 0 0 16px 0; color: #495057; font-size: 16px;">Backup Activity Parameters</h4>
+
+                        <!-- Manual inputs with basic labels -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div>
+                                <label class="control-label" style="font-size: 14px; font-weight: 600;">Monthly Data
+                                    Churn (%):</label>
+                                <input type="number" id="atlasChurnInput" min="0" max="50" value="0" placeholder="0-50"
+                                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                <small style="color: #666; font-size: 11px;">% of data that changes monthly</small>
+
+                            </div>
+                            <div>
+                                <label class="control-label" style="font-size: 14px; font-weight: 600;">Oplog Activity
+                                    (GB/hr):</label>
+                                <input type="number" id="atlasOplogInput" min="1" max="300" value="20"
+                                    placeholder="1-300"
+                                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                <small style="color: #666; font-size: 11px;">GB generated per hour</small>
+                            </div>
+                        </div>
+
+                        <!-- Quick preset buttons -->
+                        <div style="margin-top: 12px;">
+                            <div style="font-size: 12px; color: #6c757d; margin-bottom: 6px;">Quick Presets:</div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button onclick="setAtlasPreset(0, 20)"
+                                    style="padding: 6px 12px; font-size: 12px; border: 1px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; color: #495057;">Read-Heavy</button>
+                                <button onclick="setAtlasPreset(10, 50)"
+                                    style="padding: 6px 12px; font-size: 12px; border: 1px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; color: #495057;">Moderate</button>
+                                <button onclick="setAtlasPreset(25, 100)"
+                                    style="padding: 6px 12px; font-size: 12px; border: 1px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; color: #495057;">Write-Heavy</button>
+                                <button onclick="setAtlasPreset(40, 200)"
+                                    style="padding: 6px 12px; font-size: 12px; border: 1px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; color: #495057;">Extreme</button>
+                            </div>
+                        </div>
+
+                        <!-- Simple warning for extreme cases -->
+                        <div id="atlasExtremeCostWarning"
+                            style="display: none; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 8px; margin-top: 8px; font-size: 12px; color: #856404;">
+                            ⚠️ High backup activity detected - costs may be significant.
+                        </div>
+                    </div>
                 </div>
 
                 <div class="flex-grid-item">
                     <h3>DynamoDB Options</h3>
                     <div class="switch-container">
                         <label class="control-label">Pricing Mode:</label>
-                        <select id="dynamoPricingMode" style="width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                        <select id="dynamoPricingMode"
+                            style="width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                             <option value="on-demand">On-Demand (Pay-per-request)</option>
                             <option value="provisioned" selected>Provisioned Capacity</option>
                             <option value="reserved">Reserved Capacity (1-year)</option>
                         </select>
                     </div>
                     <div class="switch-container" id="targetUtilizationContainer">
-                        <label class="control-label">Auto-Scaling Target: <span id="targetUtilizationValue">70</span>% utilization</label>
-                        <input type="range" id="targetUtilizationSlider" min="50" max="90" value="70" style="width: 100%;">
-                        <small style="color: #666; font-size: 12px;">Higher targets = lower costs but higher throttling risk</small>
+                        <label class="control-label">Auto-Scaling Target: <span id="targetUtilizationValue">70</span>%
+                            utilization</label>
+                        <input type="range" id="targetUtilizationSlider" min="50" max="90" value="70"
+                            style="width: 100%;">
+                        <small style="color: #666; font-size: 12px;">Higher targets = lower costs but higher throttling
+                            risk</small>
                     </div>
                     <div class="switch-container">
                         <label class="switch">
@@ -116,6 +164,30 @@
                         <label class="control-label">ACID Transactions: <span id="transactionValue">0</span>% of
                             operations</label>
                         <input type="range" id="transactionSlider" min="0" max="100" value="0" style="width: 100%;">
+                    </div>
+
+                    <div class="switch-container">
+                        <label class="control-label">Global Secondary Indexes: <span id="gsiCountValue">2</span>
+                            GSIs</label>
+                        <input type="range" id="gsiCountSlider" min="0" max="5" value="2" style="width: 100%;">
+                        <small style="color: #666; font-size: 12px;">Each GSI requires separate RCU/WCU capacity for
+                            alternative access patterns</small>
+                    </div>
+
+                    <div class="switch-container">
+                        <label class="control-label">GSI Read Intensity: <span id="gsiReadRatioValue">25</span>% of main
+                            table reads</label>
+                        <input type="range" id="gsiReadRatioSlider" min="10" max="50" value="25" style="width: 100%;">
+                        <small style="color: #666; font-size: 12px;">How much query load hits your GSIs vs main
+                            table</small>
+                    </div>
+
+                    <div class="switch-container">
+                        <label class="control-label">GSI Write Coverage: <span id="gsiWriteRatioValue">50</span>% of
+                            main table writes</label>
+                        <input type="range" id="gsiWriteRatioSlider" min="20" max="100" value="50" style="width: 100%;">
+                        <small style="color: #666; font-size: 12px;">Percentage of writes that update GSI
+                            attributes</small>
                     </div>
                 </div>
             </div>
@@ -307,19 +379,36 @@
                 <li>DynamoDB costs scale linearly with operation volume and actual utilization.</li>
                 <li><strong>DynamoDB pricing varies dramatically based on pricing mode and target utilization:</strong>
                     <ul>
-                        <li><strong>On-Demand:</strong> Most expensive per operation but instant scaling with no capacity planning</li>
-                        <li><strong>Provisioned:</strong> 3.5x cheaper than on-demand but requires auto-scaling buffer (typically 43% overhead)</li>
-                        <li><strong>Reserved:</strong> Up to 54% additional savings with 1-year commitment but same buffer requirements</li>
+                        <li><strong>On-Demand:</strong> Most expensive per operation but instant scaling with no
+                            capacity planning</li>
+                        <li><strong>Provisioned:</strong> 3.5x cheaper than on-demand but requires auto-scaling buffer
+                            (typically 43% overhead)</li>
+                        <li><strong>Reserved:</strong> Up to 54% additional savings with 1-year commitment but same
+                            buffer requirements</li>
                     </ul>
                 </li>
                 <li>Most real-world workloads run at 30-70% average utilization of their peak capacity.</li>
-                <li>Write operations account for most of DynamoDB costs (~75-80%) because they are 5x more expensive than reads.</li>
-                <li>AWS Business Support adds a tiered percentage cost based on your monthly AWS bill (10% for first $10K, 7% for $10K-$80K, etc.) with a $100 minimum.</li>
-                <li>Atlas Support adds a percentage premium to the base cluster and backup costs (70% standard, 37% with discount).</li>
+                <li>Write operations account for most of DynamoDB costs (~75-80%) because they are 5x more expensive
+                    than reads.</li>
+                <li><strong>Global Secondary Indexes (GSIs) significantly increase DynamoDB costs:</strong>
+                    <ul>
+                        <li>Each GSI requires separate RCU/WCU capacity independent of the main table</li>
+                        <li>2-3 GSIs can double or triple your DynamoDB bill</li>
+                        <li>GSI capacity depends on query patterns and write coverage ratios</li>
+                        <li>MongoDB's secondary indexes have no additional compute costs</li>
+                    </ul>
+                </li>
+                <li>AWS Business Support adds a tiered percentage cost based on your monthly AWS bill (10% for first
+                    $10K, 7% for $10K-$80K, etc.) with a $100 minimum.</li>
+                <li>Atlas Support adds a percentage premium to the base cluster and backup costs (70% standard, 37% with
+                    discount).</li>
                 <li>Enterprise discounts of 17% can significantly reduce Atlas costs for large deployments.</li>
-                <li>Cross-region replication for DynamoDB includes additional storage costs and data transfer charges ($0.09/GB).</li>
-                <li>Both services use similar backup retention policies (weekly/monthly/yearly) for fair comparison.</li>
-                <li><strong>DynamoDB auto-scaling target utilization directly affects costs: lower targets = higher costs but safer performance.</strong></li>
+                <li>Cross-region replication for DynamoDB includes additional storage costs and data transfer charges
+                    ($0.09/GB).</li>
+                <li>Both services use similar backup retention policies (weekly/monthly/yearly) for fair comparison.
+                </li>
+                <li><strong>DynamoDB auto-scaling target utilization directly affects costs: lower targets = higher
+                        costs but safer performance.</strong></li>
             </ul>
 
             <div class="flex-grid">
@@ -341,6 +430,7 @@
                         <li>Your workload is highly variable or unpredictable</li>
                         <li>You have low utilization (<15% of equivalent Atlas tier)</li>
                         <li>Your access patterns are simple (key-value lookups)</li>
+                        <li>You need minimal secondary indexes (0-1 GSIs)</li>
                         <li>You need serverless, automatic scaling</li>
                         <li>You can commit to reserved capacity (1-3 years)</li>
                         <li>You have expertise to optimize capacity management</li>
@@ -350,10 +440,14 @@
 
             <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 20px;">
                 <h4>💡 DynamoDB Pricing Guide:</h4>
-                <p><strong>On-Demand:</strong> Simplest option with instant scaling. Pay only for actual requests but at highest per-operation rates.</p>
-                <p><strong>Provisioned:</strong> Lower rates but requires capacity planning. Auto-scaling target affects costs significantly (70% = 1.43x buffer).</p>
-                <p><strong>Reserved:</strong> Lowest rates with 1-year commitment. Same capacity planning complexity as provisioned.</p>
-                <p><strong>Target Utilization:</strong> Lower targets (50-60%) = higher costs but safer performance. Higher targets (80-90%) = lower costs but throttling risk.</p>
+                <p><strong>On-Demand:</strong> Simplest option with instant scaling. Pay only for actual requests but at
+                    highest per-operation rates.</p>
+                <p><strong>Provisioned:</strong> Lower rates but requires capacity planning. Auto-scaling target affects
+                    costs significantly (70% = 1.43x buffer).</p>
+                <p><strong>Reserved:</strong> Lowest rates with 1-year commitment. Same capacity planning complexity as
+                    provisioned.</p>
+                <p><strong>Target Utilization:</strong> Lower targets (50-60%) = higher costs but safer performance.
+                    Higher targets (80-90%) = lower costs but throttling risk.</p>
             </div>
         </div>
     </div>
